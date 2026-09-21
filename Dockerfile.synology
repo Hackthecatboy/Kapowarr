@@ -1,0 +1,35 @@
+# Local NAS builds: no BuildKit-only RUN mounts or COPY flags.
+ARG DISTRO=bookworm
+ARG PYTHON=3.13
+FROM python:${PYTHON}-slim-${DISTRO} AS python
+
+FROM rust:slim-${DISTRO} AS builder
+WORKDIR /wheels
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libssl-dev libffi-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=python /usr/local /usr/local
+COPY --from=python /usr/lib /usr/lib
+COPY --from=python /lib /lib
+COPY --from=python /etc /etc
+COPY requirements.txt .
+RUN pip3 wheel --wheel-dir=/wheels -r requirements.txt
+
+FROM python AS runtime
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /wheels /wheels
+RUN pip3 install --no-cache-dir --no-index --find-links=/wheels \
+    -r /wheels/requirements.txt && rm -rf /wheels
+RUN groupadd -g 1000 kapowarr \
+    && useradd -u 1000 -g kapowarr -d /nonexistent -M -s /bin/bash kapowarr \
+    && mkdir -p /app/db /app/logs /app/temp_downloads
+COPY backend /app/backend
+COPY frontend /app/frontend
+COPY Kapowarr.py entrypoint.sh pyproject.toml /app/
+RUN chmod +x /app/entrypoint.sh
+ENV PUID=0 PGID=0 TZ=UTC
+EXPOSE 5656
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["python3", "/app/Kapowarr.py", "--LogFolder", "/app/logs"]

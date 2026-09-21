@@ -19,6 +19,13 @@ the complete catalog.
 
 ## First implementation checkpoint
 
+Synology development deployment is documented in
+[docs/synology-development.md](docs/synology-development.md). It builds images
+locally from this branch, using `compose.synology.yml`, `Dockerfile.synology`,
+and `scripts/synology-update.sh`. No registry publishing is configured. NAS
+runtime validation remains pending; the default is an isolated test instance
+on port 5657 with its own database, media, downloads, and database backups.
+
 - Added the Usenet protocol identifier without changing existing identifiers.
 - Added indexer API-token and category storage, validation, and migration 51
   to 52. Existing GetComics settings are preserved.

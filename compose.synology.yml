@@ -1,0 +1,35 @@
+version: "3.8"
+services:
+  kapowarr:
+    image: kapowarr-fork:local
+    build:
+      context: .
+      dockerfile: Dockerfile.synology
+    restart: unless-stopped
+    environment:
+      PUID: "${PUID:?Set PUID in .env.synology}"
+      PGID: "${PGID:?Set PGID in .env.synology}"
+      TZ: "${TZ:-America/New_York}"
+    ports:
+      - "${KAPOWARR_PORT:-5657}:5656"
+    volumes:
+      - "${KAPOWARR_DATA_DIR:?Set KAPOWARR_DATA_DIR}/db:/app/db"
+      - "${KAPOWARR_DATA_DIR:?Set KAPOWARR_DATA_DIR}/logs:/app/logs"
+      - "${KAPOWARR_DATA_DIR:?Set KAPOWARR_DATA_DIR}/downloads:/app/temp_downloads"
+      - "${KAPOWARR_DATA_DIR:?Set KAPOWARR_DATA_DIR}/comics:/comics"
+      - "${KAPOWARR_DATA_DIR:?Set KAPOWARR_DATA_DIR}/backups:/backups"
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5656/', timeout=5).close()"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
