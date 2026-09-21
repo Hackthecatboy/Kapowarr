@@ -506,6 +506,7 @@ class DownloadType(BaseEnum):
 
     DDL = 1
     TORRENT = 2
+    USENET = 3
 
 
 class IndexerClientField(BaseEnum):
@@ -514,6 +515,8 @@ class IndexerClientField(BaseEnum):
     TITLE = "title"
     ENABLED = "enabled"
     URL = "url"
+    API_TOKEN = "api_token"
+    CATEGORIES = "categories"
 
     # GC
     GC_SERVICE_PREFERENCE = "gc_service_preference"
@@ -686,6 +689,8 @@ class IndexerClientData(TypedDict):
     required_tokens: List[str]
     title: str
     url: str
+    api_token: Union[str, None]
+    categories: List[int]
     gc_service_preference: Union['CommaList', None]
     gc_avoid_large_downloads: Union[bool, None]
 

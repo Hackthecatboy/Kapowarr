@@ -5,6 +5,7 @@ The manager of indexer clients and their base class
 """
 
 from importlib import import_module
+from json import dumps, loads
 from os.path import basename, dirname, splitext
 from typing import Any, Dict, List, Mapping, Tuple, Type, TypeVar, Union
 
@@ -60,6 +61,14 @@ def _validate_indexer_data(
                 raise InvalidKeyValue(key.value, value)
             filtered_data[key.value] = value
 
+        elif key == ICF.CATEGORIES:
+            if not isinstance(value, list) or any(
+                type(category) is not int or category <= 0
+                for category in value
+            ):
+                raise InvalidKeyValue(key.value, value)
+            filtered_data[key.value] = list(dict.fromkeys(value))
+
         elif (
             key == ICF.GC_SERVICE_PREFERENCE
             and value is not None
@@ -103,6 +112,17 @@ def _validate_indexer_data(
     return filtered_data
 
 
+def _indexer_db_values(data: Mapping[str, Any]) -> Dict[str, Any]:
+    """Bind every provider field, leaving unused fields empty.
+
+    Validation and connection tests use API values; serialize only at the
+    database boundary so providers receive category lists and not JSON text.
+    """
+    values = {key.value: data.get(key.value) for key in ICF}
+    values[ICF.CATEGORIES.value] = dumps(data.get('categories') or [])
+    return values
+
+
 # region Base Indexer Client
 class BaseIndexerClient(IndexerClient):
     @property
@@ -119,6 +139,7 @@ class BaseIndexerClient(IndexerClient):
             SELECT
                 enabled,
                 title, url,
+                api_token, categories,
                 gc_service_preference, gc_avoid_large_downloads
             FROM indexer_clients
             WHERE id = ?
@@ -129,6 +150,8 @@ class BaseIndexerClient(IndexerClient):
         self._enabled: bool = data['enabled']
         self._title: str = data['title']
         self._url: str = data['url']
+        self._api_token: Union[str, None] = data['api_token']
+        self._categories: List[int] = loads(data['categories'])
 
         if (
             data["gc_service_preference"] is not None
@@ -152,12 +175,14 @@ class BaseIndexerClient(IndexerClient):
             'required_tokens': [rt.value for rt in self.required_tokens],
             'title': self._title,
             'url': self._url,
+            'api_token': self._api_token,
+            'categories': list(self._categories),
             'gc_service_preference': self._gc_service_preference,
             'gc_avoid_large_downloads': self._gc_avoid_large_downloads
         }
 
     def update_indexer(self, data: Mapping[str, Any]) -> None:
-        LOGGER.info(f"Updating indexer {self._id}: {data}")
+        LOGGER.info("Updating indexer %s", self._id)
         filtered_data = _validate_indexer_data(data, self.required_tokens)
 
         # Raises exception on fail
@@ -169,28 +194,29 @@ class BaseIndexerClient(IndexerClient):
                 enabled = :enabled,
                 title = :title,
                 url = :url,
+                api_token = :api_token,
+                categories = :categories,
                 gc_service_preference = :gc_service_preference,
                 gc_avoid_large_downloads = :gc_avoid_large_downloads
             WHERE id = :id;
             """,
             {
-                **filtered_data,
+                **_indexer_db_values(filtered_data),
                 "id": self._id
             }
         )
         self._enabled = filtered_data[ICF.ENABLED.value]
         self._title = filtered_data[ICF.TITLE.value]
         self._url = filtered_data[ICF.URL.value]
-        if (
-            "gc_service_preference" in self.required_tokens
-            and "gc_avoid_large_downloads" in self.required_tokens
-        ):
-            self._gc_service_preference = CommaList(
-                filtered_data["gc_service_preference"]
-            )
-            self._gc_avoid_large_downloads = filtered_data[
-                "gc_avoid_large_downloads"
-            ]
+        self._api_token = filtered_data.get(ICF.API_TOKEN.value)
+        self._categories = list(filtered_data.get(ICF.CATEGORIES.value) or [])
+        preference = filtered_data.get(ICF.GC_SERVICE_PREFERENCE.value)
+        self._gc_service_preference = (
+            CommaList(preference) if preference is not None else None
+        )
+        self._gc_avoid_large_downloads = filtered_data.get(
+            ICF.GC_AVOID_LARGE_DOWNLOADS.value
+        )
 
         return
 
@@ -422,9 +448,7 @@ class IndexerClients:
             'url': url,
             **extra_fields
         }
-        LOGGER.info(
-            f"Adding indexer: {download_type=}, {client_type=}, {data=}"
-        )
+        LOGGER.info("Adding indexer: %s, %s", download_type, client_type)
         filtered_data = _validate_indexer_data(
             data,
             ClientClass.required_tokens
@@ -433,13 +457,7 @@ class IndexerClients:
         # Raises exception on fail
         ClientClass.test(**filtered_data)
 
-        filtered_data = {
-            key: filtered_data.get(key)
-            for key in (
-                'download_type', 'client_type',
-                *ICF._value2member_map_
-            )
-        }
+        filtered_data = _indexer_db_values(filtered_data)
         filtered_data.update({
             'download_type': ClientClass.download_type.value,
             'client_type': client_type
@@ -451,11 +469,13 @@ class IndexerClients:
                 enabled,
                 download_type, client_type,
                 title, url,
+                api_token, categories,
                 gc_service_preference, gc_avoid_large_downloads
             ) VALUES (
                 :enabled,
                 :download_type, :client_type,
                 :title, :url,
+                :api_token, :categories,
                 :gc_service_preference, :gc_avoid_large_downloads
             );
             """,

@@ -1312,3 +1312,21 @@ def _migrate_remove_search_all_task() -> None:
     )
 
     return
+
+
+@DatabaseMigrationHandler.register_handler(51)
+def _migrate_add_indexer_api_configuration() -> None:
+    """Preserve existing indexers while adding Newznab/Torznab settings."""
+    cursor = get_db()
+    # setup_db creates missing tables from DB_SCHEMA before migrations run.
+    # Databases predating indexer support already have these columns by now.
+    columns = {
+        row[1] for row in cursor.execute("PRAGMA table_info(indexer_clients);")
+    }
+    if 'api_token' not in columns:
+        cursor.execute("ALTER TABLE indexer_clients ADD COLUMN api_token TEXT;")
+    if 'categories' not in columns:
+        cursor.execute(
+            "ALTER TABLE indexer_clients "
+            "ADD COLUMN categories TEXT NOT NULL DEFAULT '[]';"
+        )

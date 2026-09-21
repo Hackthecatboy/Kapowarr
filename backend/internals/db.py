@@ -469,6 +469,8 @@ CREATE TABLE IF NOT EXISTS indexer_clients(
     client_type VARCHAR(255) NOT NULL,
     title VARCHAR(255) NOT NULL,
     url TEXT NOT NULL,
+    api_token TEXT,
+    categories TEXT NOT NULL DEFAULT '[]',
 
     gc_service_preference TEXT,
     gc_avoid_large_downloads BOOL
