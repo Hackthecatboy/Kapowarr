@@ -38,7 +38,7 @@ function addZnabFields(form, prefix, options, values = {}) {
 	const row = document.createElement('tr');
 	const cell = document.createElement('td');
 	cell.colSpan = 2;
-	cell.innerText = 'Enter the full Newznab/Torznab API URL (including the per-indexer path from Prowlarr). Usenet downloads require a configured SABnzbd or NZBGet client. Torznab is search-only.';
+	cell.innerText = 'Enter the full Newznab/Torznab API URL (including the per-indexer path from Prowlarr). Downloads require a configured client for this protocol and shared download folders.';
 	row.appendChild(cell);
 	form.appendChild(row);
 }

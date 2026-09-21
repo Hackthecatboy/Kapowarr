@@ -1346,3 +1346,16 @@ def _migrate_external_job_identity():
         PRIMARY KEY(indexer_id, link),
         FOREIGN KEY(indexer_id) REFERENCES indexer_clients(id) ON DELETE CASCADE
     )""")
+
+
+@DatabaseMigrationHandler.register_handler(53)
+def _migrate_torrent_job_ownership():
+    cursor = get_db()
+    columns = {row[1] for row in cursor.execute('PRAGMA table_info(download_queue)')}
+    if 'external_token' not in columns:
+        cursor.execute("ALTER TABLE download_queue ADD COLUMN external_token TEXT NOT NULL DEFAULT ''")
+    # Legacy torrent rows have no recorded remote identity. Never auto-resubmit
+    # them after upgrading: a remote torrent may already exist and be seeding.
+    cursor.execute("""UPDATE download_queue SET external_phase = 'submitting'
+        WHERE client_type = 'torrent' AND external_id IS NULL
+        AND external_phase = 'queued'""")

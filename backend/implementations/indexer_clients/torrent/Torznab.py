@@ -9,4 +9,4 @@ from backend.implementations.znab_indexer import ZnabIndexer
     allow_multiple_instances=True
 )
 class TorznabIndexer(ZnabIndexer):
-    pass
+    supports_downloads = True

@@ -344,12 +344,12 @@ class SeedingHandling(BaseEnum):
     "How to handle downloads that completed but still have to seed"
 
     COMPLETE = "complete"
-    "Let download fully complete (finish seeding) and then move all files"
+    "Wait for the client to stop seeding, then import a copy"
 
     COPY = "copy"
     """
-    Copy the files while the download is seeding,
-    and once done delete original files
+    Import a copy while the download is seeding.
+    Retain original payload files when seeding finishes.
     """
 
 
@@ -594,6 +594,7 @@ service on the GC page
 class DownloadService(BaseEnum):
     "All possible download services/protocols"
 
+    TORRENT = "Torrent"
     USENET = "Usenet"
     MEGA = "Mega"
     MEDIAFIRE = "MediaFire"

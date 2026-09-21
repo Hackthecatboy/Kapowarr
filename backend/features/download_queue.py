@@ -27,9 +27,11 @@ from backend.base.logging import LOGGER
 from backend.features.post_processing import (PostProcessor,
                                               PostProcessorTorrentsComplete,
                                               PostProcessorTorrentsCopy)
+from backend.features.torrent_downloads import run_torrent
 from backend.features.usenet_downloads import run_usenet
 from backend.implementations.blocklist import add_to_blocklist
 from backend.implementations.download_client_manager import DownloadClients
+from backend.implementations.download_clients.Torrent import TorrentDownload
 from backend.implementations.download_clients.Usenet import UsenetDownload
 from backend.implementations.download_prepper_manager import DownloadPreppers
 from backend.implementations.external_client_manager import ExternalClients
@@ -257,7 +259,7 @@ class DownloadHandler(metaclass=Singleton):
         cursor = get_db()
         downloads = cursor.execute("""
             SELECT
-                id, volume_id, client_type, external_client_id, external_id, external_phase,
+                id, volume_id, client_type, external_client_id, external_id, external_phase, external_token,
                 download_link, covered_issues,
                 force_original_name,
                 source_type, source_name,
@@ -313,6 +315,8 @@ class DownloadHandler(metaclass=Singleton):
                 if isinstance(dl_instance, UsenetDownload):
                     dl_instance._external_id = download['external_id']
                     dl_instance.phase = download['external_phase']
+                    if isinstance(dl_instance, TorrentDownload):
+                        dl_instance.token = download['external_token']
 
             except DownloadLinkBroken:
                 # Link is broken
@@ -428,6 +432,9 @@ class DownloadHandler(metaclass=Singleton):
             download (ExternalDownload): The external download to run.
                 One of the entries in self.queue.
         """
+        if isinstance(download, TorrentDownload):
+            run_torrent(self, download)
+            return
         if isinstance(download, UsenetDownload):
             run_usenet(self, download)
             return

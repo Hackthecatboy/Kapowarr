@@ -39,8 +39,11 @@ class NewznabPrepper(DownloadPrepper):
                                           {i.calculated_issue_number: extract_year_from_date(i.date) for i in issues}, wanted)
         if not self.force_match and not match['match']:
             raise InvalidKeyValue('link', 'Release does not match this volume or issue')
-        return [UsenetDownload(
+        return [self.create_download(result)]
+
+    def create_download(self, result):
+        return UsenetDownload(
             result['link'], self.volume_id, result['issue_number'],
             DownloadService.USENET, result['indexer_title'], result['link'],
             result['display_title'], None, self.force_match
-        )]
+        )

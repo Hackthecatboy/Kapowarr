@@ -106,7 +106,7 @@
 	{% for kind, title in [('torrent', 'Torrents'), ('usenet', 'Usenet')] %}
 	<div class="settings-container">
 		<h2>{{ title }}</h2>
-		{% if kind == 'torrent' %}<p>Search only in this development build. Torrent download support is still being connected.</p>{% else %}<p>Downloads require a configured SABnzbd or NZBGet client and shared download folders.</p>{% endif %}
+		{% if kind == 'torrent' %}<p>Downloads require qBittorrent or Transmission and shared download folders.</p>{% else %}<p>Downloads require a configured SABnzbd or NZBGet client and shared download folders.</p>{% endif %}
 		<div id="{{ kind }}-indexer-list" class="client-list">
 			<button class="add-button icon-text-color" title="Add {{ kind }} indexer">
 				<img src="{{url_base}}/static/img/cancel.svg" alt="">

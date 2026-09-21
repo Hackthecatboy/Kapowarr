@@ -493,6 +493,7 @@ CREATE TABLE IF NOT EXISTS download_queue(
     external_client_id INTEGER,
     external_id TEXT,
     external_phase TEXT NOT NULL DEFAULT 'queued',
+    external_token TEXT NOT NULL DEFAULT '',
 
     download_link TEXT NOT NULL,
     covered_issues VARCHAR(255),

@@ -1,9 +1,34 @@
 # Sonarr-style indexers and download clients
 
-Status: Newznab/Torznab search and settings are implemented. Newznab now connects
-to SABnzbd/NZBGet through a durable submission journal and a separate Usenet
-worker/import path. Torznab remains search-only. Full-catalog release and live
-client/NAS verification are still pending.
+Status: Newznab and Torznab search/download routing are implemented. SABnzbd,
+NZBGet, qBittorrent and Transmission have managed job tracking and copy import.
+The full client catalog and live client/NAS verification remain pending.
+
+## Torrent checkpoint (September 21, 2026)
+
+- Connected Torznab release metadata to comic matching and torrent preparation;
+  enabled manual, automatic and RSS downloads.
+- Removed TorrentDownload's magnet2torrent.com dependency. HTTP(S) torrent files
+  are validated and hashed locally; magnets support v1 hex/base32 hashes.
+- Reworked qBittorrent and Transmission operations with bounded requests,
+  authenticated uploads, explicit completion states and client-reported paths.
+  qBittorrent requires 4.3.9+ and a kapowarr category; Transmission requires 4.1+.
+- Added migration 53 to 54 and persisted per-job ownership tokens. Upgrades hold
+  legacy torrent queue rows for review rather than resubmitting unknown jobs.
+- Torrent jobs now use the submission journal, dedicated mapped folders and
+  tag/label checks. Existing client torrents are not adopted.
+- Added single-file support to copy import. Copy mode imports once while seeding;
+  Complete waits for the client to stop. Original data is retained in both modes.
+- Added 21 tests for parser/HTTP/protocol behavior, ownership, restarts, routing,
+  migration and seeding modes. All 104 tests pass; configured mypy passes on 91
+  files, JavaScript syntax checks pass, and all three changed settings templates
+  render. Existing Usenet tests remain part of validation.
+
+Setup: [docs/torrent-downloads.md](docs/torrent-downloads.md).
+Next: an isolated Container Manager test project using the source-build setup,
+then live client checks and Deluge/remaining catalog work. This slice does not
+publish a container image. Rename/conversion, full v2 torrent support, custom
+category/priority and the remaining adapters are still pending.
 
 ## Usenet download checkpoint (September 20, 2026)
 
@@ -13,7 +38,7 @@ client/NAS verification are still pending.
 - Added bounded requests without credential-bearing URL logs and explicit
   completion handling; repair/unpack is never inferred complete from progress.
 - Stored searched release metadata for Newznab preparation and comic matching.
-  Enabled Newznab manual/automatic/RSS downloads; Torznab remains guarded.
+  Enabled Newznab manual/automatic/RSS downloads; Torznab was still guarded.
 - Added migration 52 to 53 for external job ID/submission phase and release
   metadata. Existing jobs survive. New Usenet jobs reconnect after restart;
   uncertain submissions/imports pause for review instead of replaying.
@@ -29,12 +54,11 @@ client/NAS verification are still pending.
 
 Limits: fixed `kapowarr` category and normal priority, URL-based NZB submission,
 copy import preserving filenames, no automatic Usenet rename/conversion yet,
-and manual review for interrupted imports. Existing torrent jobs do not use the
-new journal yet. See [docs/usenet-downloads.md](docs/usenet-downloads.md).
+and manual review for interrupted imports. At that checkpoint torrent jobs did not yet use the journal; see the later
+torrent checkpoint above. See [docs/usenet-downloads.md](docs/usenet-downloads.md).
 
-Next work: live verification of this Usenet slice, then torrent-file/magnet
-preparation for Torznab, shared lifecycle integration for existing torrent
-clients, and Deluge. Continue the remaining full client catalog afterwards.
+The subsequent torrent checkpoint above connects torrent preparation and
+lifecycle tracking. Live verification and the full client catalog remain pending.
 
 ## Earlier protocol/search checkpoint (September 20, 2026)
 

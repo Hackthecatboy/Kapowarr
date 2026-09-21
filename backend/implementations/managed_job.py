@@ -19,6 +19,9 @@ def submit_once(download):
     if phase != 'queued':
         raise JobNeedsReview(
             'Submission outcome is uncertain. Check the client before removing or retrying this entry.')
+    prepare = getattr(download, 'prepare_submission', None)
+    if prepare is not None:
+        prepare()
     # Commit before contacting the client. A crash or timeout after submission
     # must not turn into a second submission on restart.
     changed = cursor.execute("UPDATE download_queue SET external_phase = 'submitting' WHERE id = ? AND external_phase = 'queued' AND external_id IS NULL",
@@ -26,8 +29,12 @@ def submit_once(download):
     cursor.connection.commit()
     if changed != 1:
         raise JobNeedsReview('Submission is already in progress')
-    job_id = download.external_client.add_download(download.download_link, download.download_folder,
-                                                   download.title)
+    submit = getattr(download, 'submit_download', None)
+    if submit is not None:
+        job_id = submit()
+    else:
+        job_id = download.external_client.add_download(download.download_link, download.download_folder,
+                                                       download.title)
     if not isinstance(job_id, str) or not job_id:
         raise JobNeedsReview(
             'Client did not return a job ID. Check its queue before retrying.')

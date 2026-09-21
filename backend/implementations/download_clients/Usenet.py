@@ -17,6 +17,8 @@ from backend.internals.settings import Settings
 
 @DownloadClients.register_client(DownloadClientIdentifier.USENET)
 class UsenetDownload(ExternalDownload, BaseDirectDownload):
+    download_type = DownloadType.USENET
+
     @property
     def external_client(self):
         return self._external_client
@@ -50,10 +52,12 @@ class UsenetDownload(ExternalDownload, BaseDirectDownload):
         self._download_folder = Settings().sv.download_folder
         self._files = ['']
         # Human-readable only; never used to construct a filesystem path.
-        self._title = self._filename_body = web_title or 'Usenet release'
+        self._title = self._filename_body = web_title or (
+            'Torrent release' if self.download_type == DownloadType.TORRENT else 'Usenet release'
+        )
         self._sleep_event = Event()
         self._external_client = external_client or ExternalClients.get_least_used_client(
-            DownloadType.USENET)
+            self.download_type)
         if isinstance(covered_issues, float):
             try:
                 self._issue_id = Volume(

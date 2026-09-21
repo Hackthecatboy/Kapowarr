@@ -21,7 +21,9 @@ def import_completed(download):
     source = Path(download.files[0])
     # Copy only regular comic media, preserving originals in the client.
     candidates = []
-    for path in source.rglob('*'):
+    if source.is_symlink():
+        raise JobNeedsReview('Completed content is a symlink')
+    for path in ([source] if source.is_file() else source.rglob('*')):
         if path.is_symlink():
             raise JobNeedsReview(
                 'Completed folder contains symlinks; inspect it before importing')
@@ -44,7 +46,7 @@ def import_completed(download):
     destination.mkdir(parents=True)
     files = []
     for path in candidates:
-        target = destination / path.relative_to(source)
+        target = destination / (path.name if source.is_file() else path.relative_to(source))
         target.parent.mkdir(parents=True, exist_ok=True)
         copy2(path, target)
         files.append(str(target))

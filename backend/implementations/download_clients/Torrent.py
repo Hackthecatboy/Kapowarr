@@ -1,191 +1,112 @@
-# -*- coding: utf-8 -*-
+"""Managed torrents with persisted identity, ownership and client-reported paths."""
 
-from os.path import basename, join, splitext
-from threading import Event
-from typing import Any, Dict, List, Tuple, Union
+from pathlib import Path
+from uuid import uuid4
 
-from requests import RequestException
-
-from backend.base.custom_exceptions import DownloadLinkBroken, IssueNotFound
 from backend.base.definitions import (DownloadClientIdentifier,
-                                      DownloadService, DownloadState,
-                                      DownloadType, ExternalDownload,
-                                      ExternalDownloadClient)
-from backend.base.helpers import Session, get_torrent_info
-from backend.base.logging import LOGGER
+                                      DownloadState as DS, DownloadType)
 from backend.implementations.download_client_manager import DownloadClients
-from backend.implementations.download_clients.base import BaseDirectDownload
-from backend.implementations.external_client_manager import ExternalClients
-from backend.implementations.naming import generate_issue_name
+from backend.implementations.download_clients.Usenet import UsenetDownload
+from backend.implementations.managed_job import JobNeedsReview, submit_once
 from backend.implementations.remote_mapping import RemoteMappings
-from backend.implementations.volumes import Volume
-from backend.internals.settings import Settings
+from backend.implementations.torrent_support import resolve_torrent
+from backend.internals.db import get_db
 
 
 @DownloadClients.register_client(DownloadClientIdentifier.TORRENT)
-class TorrentDownload(ExternalDownload, BaseDirectDownload):
-    @property
-    def external_client(self) -> ExternalDownloadClient:
-        return self._external_client
-
-    @external_client.setter
-    def external_client(self, value: ExternalDownloadClient) -> None:
-        self._external_client = value
-        return
+class TorrentDownload(UsenetDownload):
+    download_type = DownloadType.TORRENT
+    token = ''
 
     @property
-    def external_id(self) -> Union[str, None]:
-        return self._external_id
+    def target_folder(self):
+        return Path(self.download_folder) / ('kapowarr-' + self.token)
 
-    @property
-    def sleep_event(self) -> Event:
-        return self._sleep_event
+    def run(self):
+        cursor = get_db()
+        row = cursor.execute(
+            'SELECT external_token FROM download_queue WHERE id = ?', (self.id,)).fetchone()
+        if row is None:
+            raise JobNeedsReview('Queue entry is missing')
+        self.token = row[0]
+        if not self.token:
+            self.token = uuid4().hex
+            cursor.execute(
+                "UPDATE download_queue SET external_token = ? WHERE id = ? AND external_token = ''", (self.token, self.id))
+            cursor.connection.commit()
+            self.token = cursor.execute(
+                'SELECT external_token FROM download_queue WHERE id = ?', (self.id,)).fetchone()[0]
+        self._external_id, self.phase = submit_once(self)
+        if self.phase == 'importing':
+            raise JobNeedsReview(
+                'Import was interrupted. Inspect the library copy; torrent data was retained.')
 
-    def __init__(
-        self,
-        download_link: str,
+    def prepare_submission(self):
+        self.payload = resolve_torrent(self.download_link)
+        if self.external_client.get_download(self.payload.info_hash) is not None:
+            raise JobNeedsReview(
+                'This torrent already exists in the client. It was not adopted or modified.')
 
-        volume_id: int,
-        covered_issues: Union[float, Tuple[float, float], None],
+    def submit_download(self):
+        target = RemoteMappings.local_to_remote(
+            self.external_client.id, str(self.target_folder))
+        return self.external_client.add_torrent(self.payload, target, 'kapowarr-' + self.token)
 
-        download_service: DownloadService,
-        source_name: str,
+    def owns(self, info):
+        if (not self.token or self.target_folder.is_symlink()
+                or Path(self.download_folder).resolve() not in self.target_folder.resolve().parents
+                or 'kapowarr-' + self.token not in info.get('tags', [])):
+            return False
+        path = info.get('save_path')
+        if not isinstance(path, str) or not path:
+            return False
+        local = RemoteMappings.remote_to_local(self.external_client.id, path)
+        return Path(local).is_absolute() and Path(local).resolve() == self.target_folder.resolve()
 
-        web_link: Union[str, None],
-        web_title: Union[str, None],
-        web_sub_title: Union[str, None],
-
-        forced_match: bool = False,
-        external_client: Union[ExternalDownloadClient, None] = None
-    ) -> None:
-        LOGGER.debug(
-            'Creating download: %s',
-            download_link
-        )
-
-        settings = Settings().sv
-        volume = Volume(volume_id)
-
-        self._download_link = self._pure_link = download_link
-        self._volume_id = volume_id
-        self._issue_id = None
-        self._covered_issues = covered_issues
-        self._download_service = download_service
-        self._source_name = source_name
-        self._web_link = web_link
-        self._web_title = web_title
-        self._web_sub_title = web_sub_title
-
-        self._id = None
-        self._state = DownloadState.QUEUED_STATE
-        self._progress = 0.0
-        self._speed = 0.0
-        self._size = -1
-        self._download_thread = None
-        self._download_folder = settings.download_folder
-        self._sleep_event = Event()
-
-        self._external_id: Union[str, None] = None
-        if external_client:
-            self._external_client = external_client
-        else:
-            self._external_client = ExternalClients.get_least_used_client(
-                DownloadType.TORRENT
-            )
-
-        try:
-            if isinstance(covered_issues, float):
-                self._issue_id = volume.get_issue_from_number(covered_issues).id
-
-        except IssueNotFound as e:
-            if not forced_match:
-                raise e
-
-        # Find name of torrent as that becomes folder that media is
-        # downloaded in
-        try:
-            response = Session().post(
-                'https://magnet2torrent.com/upload/',
-                data={'magnet': download_link}
-            )
-            response.raise_for_status()
-            if response.headers.get(
-                'Content-Type'
-            ) != 'application/x-bittorrent':
-                raise RequestException
-
-        except RequestException:
-            raise DownloadLinkBroken(self.download_link)
-
-        torrent_name = get_torrent_info(response.content)[b'name'].decode()
-
-        self._filename_body = ''
-        if settings.rename_downloaded_files:
-            try:
-                self._filename_body = generate_issue_name(
-                    volume.get_data(),
-                    covered_issues
-                )
-
-            except IssueNotFound as e:
-                if not forced_match:
-                    raise e
-
-        if not self._filename_body:
-            self._filename_body = splitext(torrent_name)[0]
-
-        self._title = basename(self._filename_body)
-        self._files = [join(self._download_folder, torrent_name)]
-        return
-
-    def run(self) -> None:
-        self._external_id = self.external_client.add_download(
-            self.download_link,
-            RemoteMappings.local_to_remote(
-                self._external_client.id,
-                self._download_folder
-            ),
-            self.title
-        )
-        return
-
-    def update_status(self) -> None:
-        if not self.external_id:
+    def update_status(self):
+        info = self.external_client.get_download(self.external_id)
+        if info is None:
+            self._missing_polls = getattr(self, '_missing_polls', 0) + 1
+            if self._missing_polls <= 3 and self.phase != 'imported':
+                return  # Some clients expose a newly added magnet asynchronously.
+            raise JobNeedsReview(
+                'Tracked torrent is missing. It will not be resubmitted.')
+        self._missing_polls = 0
+        if not self.owns(info):
+            raise JobNeedsReview(
+                'Torrent ownership or save path changed. Inspect the client; it will not be modified automatically.')
+        self._progress, self._speed, self._size = info['progress'], info['speed'], info['size']
+        if self.state in (DS.CANCELED_STATE, DS.SHUTDOWN_STATE):
             return
+        if info['state'] == DS.FAILED_STATE:
+            raise JobNeedsReview(
+                'Client reports a torrent error. Check the client; payload files were retained.')
+        if info['state'] in (DS.IMPORTING_STATE, DS.SEEDING_STATE):
+            storage = info.get('storage')
+            if not isinstance(storage, str) or not storage:
+                raise JobNeedsReview('Client did not report a completed content path')
+            local = Path(RemoteMappings.remote_to_local(
+                self.external_client.id, storage))
+            if not local.is_absolute() or local.is_symlink() or not local.exists() or self.target_folder.resolve() not in local.resolve().parents:
+                raise JobNeedsReview(
+                    'Completed content is unavailable or outside its job folder. Check mounts and mappings.')
+            self._files = [str(local.resolve())]
+        self._state = info['state']
 
-        torrent_status = self.external_client.get_download(self.external_id)
-        if not torrent_status:
-            if torrent_status is None:
-                self._state = DownloadState.CANCELED_STATE
-            return
+    def remove_from_client(self, delete_files):
+        if self.external_id:
+            info = self.external_client.get_download(self.external_id)
+            if info is None:
+                return
+            if not self.owns(info):
+                raise JobNeedsReview(
+                    'Cleanup refused: torrent ownership or path changed')
+            self.external_client.delete_download(self.external_id, delete_files)
 
-        self._progress = torrent_status['progress']
-        self._speed = torrent_status['speed']
-        self._size = torrent_status['size']
-        if self.state not in (
-            DownloadState.CANCELED_STATE,
-            DownloadState.SHUTDOWN_STATE
-        ):
-            self._state = torrent_status['state']
-
-        return
-
-    def remove_from_client(self, delete_files: bool) -> None:
-        if not self.external_id:
-            return
-
-        self.external_client.delete_download(self.external_id, delete_files)
-        return
-
-    def stop(self,
-        state: DownloadState = DownloadState.CANCELED_STATE
-    ) -> None:
-        self._state = state
-        self._sleep_event.set()
-        return
-
-    def as_dict(self) -> Dict[str, Any]:
-        return {
-            **super().as_dict(),
-            'client': self.external_client.id if self._external_client else None
-        }
+    def cancel_remote(self):
+        # A local queue entry can be removed without claiming an unrelated job.
+        if self.external_id:
+            info = self.external_client.get_download(self.external_id)
+            if info is not None and self.owns(info):
+                self.external_client.delete_download(
+                    self.external_id, self.phase != 'imported')

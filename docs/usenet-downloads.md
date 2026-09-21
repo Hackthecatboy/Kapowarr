@@ -2,8 +2,8 @@
 
 This slice connects Newznab search results to SABnzbd and NZBGet. Both clients
 have settings, connection tests, URL submission, queue/history polling, job-ID
-persistence, remote-path mapping and completed-file import. Torznab remains
-search-only. This is not the full Sonarr-client release.
+persistence, remote-path mapping and completed-file import. Torznab is also connected through the separate
+[torrent path](torrent-downloads.md). This is not the full Sonarr-client release.
 
 ## Set up an isolated test
 
@@ -71,9 +71,8 @@ job and its data. An uncertain submission without a saved ID cannot be removed
 from the remote client automatically; inspect it there. Kapowarr never clears
 an entire category or queue.
 
-The existing torrent runner has not been migrated to the new submission journal.
-This slice fixes queue registration/commit ordering before starting external
-workers, while keeping the torrent seeding behavior.
+The later torrent slice also uses the submission journal and copy importer,
+with ownership checks and separate seeding handling. See the torrent guide.
 
 ## Validation
 

@@ -117,7 +117,7 @@ class ZnabIntegration(unittest.TestCase):
             self.assertEqual(release['series'], 'Example Comic')
             self.assertEqual(release['issue_number'], 1.0)
             self.assertEqual(release['indexer_id'], client.id)
-            self.assertEqual(release['download_supported'], protocol == DownloadType.USENET)
+            self.assertTrue(release['download_supported'])
             params = self.transport.call_args.args[0]
             self.assertEqual(params['q'], query['query'])
             self.assertEqual(params['cat'], '7030')
@@ -138,9 +138,28 @@ class ZnabIntegration(unittest.TestCase):
             results = asyncio.run(SearchCoordinator(1, [1]).search())
             self.assertEqual(len(results), 1)  # duplicate links across providers
             self.assertTrue(results[0]['match'])
-            self.assertFalse(results[0]['download_supported'])
+            self.assertTrue(results[0]['download_supported'])
             self.transport.side_effect = lambda params: CAPS if params['t'] == 'caps' else feed('')
             self.assertEqual(asyncio.run(SearchCoordinator(1, [1]).search()), [])
+
+    def test_torznab_search_metadata_routes_to_torrent_prepper(self):
+        from backend.implementations.download_prepper_manager import \
+            DownloadPreppers
+        from backend.implementations.release_store import get_release
+        client = self.add(DownloadType.TORRENT)
+        release = asyncio.run(client.search(dict(query='Example', page=1))).results[0]
+        self.assertEqual(get_release(client.id, release['link'])['display_title'], release['display_title'])
+        DownloadPreppers.trigger_prepper_registration()
+        prepper = DownloadPreppers.get_prepper(DownloadType.TORRENT, 'Torznab')
+        volume = Mock()
+        volume.get_data.return_value = SimpleNamespace(title='Example Comic', alt_title=None, year=2026, volume_number=1, special_version=SpecialVersion.NORMAL)
+        volume.get_issues.return_value = [SimpleNamespace(id=1, calculated_issue_number=1.0, date='2026-01-01')]
+        with patch('backend.implementations.download_preppers.usenet.Newznab.Volume', return_value=volume), \
+                patch('backend.implementations.matching.blocklist_contains', return_value=False), \
+                patch('backend.implementations.download_preppers.torrent.Torznab.TorrentDownload') as download:
+            prepper(release['link'], client.id, 1, 1).get_downloads()
+            self.assertEqual(download.call_args.args[0], release['link'])
+            self.assertEqual(download.call_args.args[2], 1.0)
 
     def test_provider_pages_use_capability_limit_and_failure_is_contained(self):
         client = self.add()
@@ -154,6 +173,7 @@ class ZnabIntegration(unittest.TestCase):
 
     def test_automatic_search_and_discovery_exclude_search_only_providers(self):
         client = self.add(DownloadType.TORRENT)
+        self._start(patch.object(type(client), 'supports_downloads', False))
         with patch('backend.features.search_full.Volume') as volume:
             volume.return_value.get_issues.return_value = []
             with patch('backend.features.search_full.SearchActionPlanner'):
@@ -179,6 +199,7 @@ class ZnabIntegration(unittest.TestCase):
 
     def test_direct_enqueue_rejects_search_only_without_prepper_or_blocklisting(self):
         client = self.add(DownloadType.TORRENT)
+        self._start(patch.object(type(client), 'supports_downloads', False))
         handler = object.__new__(DownloadHandler)
         handler.link_in_queue = Mock(return_value=False)
         with patch('backend.features.download_queue.DownloadPreppers.get_prepper') as prepper, \

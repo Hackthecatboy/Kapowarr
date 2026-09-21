@@ -1,296 +1,106 @@
-# -*- coding: utf-8 -*-
+"""qBittorrent Web API adapter with local torrent identity and explicit states."""
 
-from time import time
-from typing import Any, Dict, Union
-
-from requests.exceptions import RequestException
+import re
+from contextlib import contextmanager
 
 from backend.base.custom_exceptions import ClientNotWorking, CredentialInvalid
 from backend.base.definitions import (BrokenClientReason, Constants,
-                                      DownloadState, DownloadType,
+                                      DownloadState as DS, DownloadType,
                                       ExternalClientField as ECF)
-from backend.base.helpers import Session
-from backend.base.logging import LOGGER
 from backend.implementations.external_client_manager import (
-    BaseExternalClient, ExternalClients, filename_magnet_link)
-from backend.internals.settings import Settings
+    BaseExternalClient, ExternalClients)
+from backend.implementations.torrent_support import (decode_json, http,
+                                                     invalid, resolve_torrent,
+                                                     session)
+from backend.implementations.usenet_support import entries, number
 
 
-@ExternalClients.register_client(
-    DownloadType.TORRENT, 'qBittorrent',
-    (ECF.TITLE, ECF.ENABLED, ECF.BASE_URL, ECF.USERNAME, ECF.PASSWORD)
-)
+@ExternalClients.register_client(DownloadType.TORRENT, 'qBittorrent',
+                                 (ECF.TITLE, ECF.ENABLED, ECF.BASE_URL, ECF.USERNAME, ECF.PASSWORD))
 class qBittorrent(BaseExternalClient):
-    state_mapping = {
-        'queuedDL': DownloadState.QUEUED_STATE,
-        'pausedDL': DownloadState.PAUSED_STATE,
-        'checkingDL': DownloadState.DOWNLOADING_STATE,
-        'metaDL': DownloadState.DOWNLOADING_STATE,
-        'checkingResumeData': DownloadState.DOWNLOADING_STATE,
-        'downloading': DownloadState.DOWNLOADING_STATE,
-        'forcedDL': DownloadState.DOWNLOADING_STATE,
-
-        'queuedUP': DownloadState.SEEDING_STATE,
-        'uploading': DownloadState.SEEDING_STATE,
-        'forcedUP': DownloadState.SEEDING_STATE,
-        'checkingUP': DownloadState.SEEDING_STATE,
-        'stalledUP': DownloadState.SEEDING_STATE,
-
-        'pausedUP': DownloadState.IMPORTING_STATE,
-        'error': DownloadState.FAILED_STATE
-    }
-
-    def __init__(self, client_id: int) -> None:
-        super().__init__(client_id)
-
-        self.ssn = self._login(
-            self.base_url, self.username, self.password
-        )
-        self.login_timeout: int = self.ssn.get(
-            f'{self.base_url}/api/v2/app/preferences'
-        ).json()["web_ui_session_timeout"]
-        self.last_api_call = round(time())
-        self.last_update: float = 0.0
-
-        self.statuses: Dict[str, Union[Dict[str, Any], None]] = {}
-        self.fail_timestamps: Dict[str, Union[int, None]] = {}
-        self.settings = Settings()
-        return
-
     @staticmethod
-    def _login(
-        base_url: str,
-        username: Union[str, None],
-        password: Union[str, None]
-    ) -> Session:
-        """Login into qBittorrent client.
-
-        Args:
-            base_url (str): Base URL of instance.
-            username (Union[str, None]): Username to access client, if set.
-            password (Union[str, None]): Password to access client, if set.
-
-        Raises:
-            ClientNotWorking: Can't connect to client.
-            CredentialInvalid: Credentials are invalid.
-
-        Returns:
-            Session: Request session that is logged in.
-        """
-        ssn = Session()
-
-        if username or password:
-            params = {
-                'username': username or '',
-                'password': password or ''
-            }
-
-            try:
-                auth_request = ssn.post(
-                    f'{base_url}/api/v2/auth/login',
-                    data=params
-                )
-
-            except RequestException:
-                LOGGER.exception("Can't connect to qBittorrent instance: ")
-                raise ClientNotWorking(BrokenClientReason.CONNECTION_ERROR)
-
-            if auth_request.status_code == 404:
-                LOGGER.error(
-                    f"Can't connect or version too low of qBittorrent instance: {auth_request.text}"
-                )
-                # Should be at least v4.1
-                raise ClientNotWorking(BrokenClientReason.VERSION_NOT_SUPPORTED)
-
-            if not auth_request.ok:
-                LOGGER.error(
-                    f"Not connected to qBittorrent instance: {auth_request.text}"
-                )
-                raise ClientNotWorking(BrokenClientReason.NOT_CLIENT_INSTANCE)
-
-            auth_success = auth_request.headers.get('set-cookie') is not None
-
-            if not auth_success:
-                LOGGER.error(
-                    f"Failed to authenticate for qBittorrent instance: {auth_request.text}"
-                )
-                raise CredentialInvalid
-
-            return ssn
-
-        try:
-            version_request = ssn.get(f'{base_url}/api/v2/app/version')
-
-        except RequestException:
-            LOGGER.exception("Can't connect to qBittorrent instance: ")
-            raise ClientNotWorking(BrokenClientReason.CONNECTION_ERROR)
-
-        if version_request.status_code == 404:
-            LOGGER.error(
-                f"Can't connect or version too low of qBittorrent instance: {version_request.text}"
-            )
-            raise ClientNotWorking(BrokenClientReason.VERSION_NOT_SUPPORTED)
-
-        if version_request.status_code in (401, 403):
-            LOGGER.error(
-                f"Authentication required for qBittorrent instance: {version_request.text}"
-            )
-            raise CredentialInvalid
-
-        if not version_request.ok:
-            LOGGER.error(
-                f"Not connected to qBittorrent instance: {version_request.text}"
-            )
-            raise ClientNotWorking(BrokenClientReason.NOT_CLIENT_INSTANCE)
-
-        return ssn
-
-    def _ensure_login(self) -> None:
-        if self.last_api_call + self.login_timeout < time():
-            self.ssn = self._login(
-                self._base_url, self._username, self._password
-            )
-            self.last_api_call = round(time())
-        return
-
-    def _update_statuses(self) -> None:
-        self._ensure_login()
-
-        try:
-            torrents: Dict[str, Dict[str, Any]] = {
-                torrent["hash"]: torrent
-                for torrent in self.ssn.get(
-                    f'{self.base_url}/api/v2/torrents/info',
-                    params={'hashes': '|'.join(self.statuses)}
-                ).json()
-            }
-            self.last_api_call = round(time())
-
-        except RequestException:
-            LOGGER.exception("Can't connect to qBittorrent instance: ")
-            raise ClientNotWorking(BrokenClientReason.CONNECTION_ERROR)
-
-        for t_hash in self.statuses:
-            if t_hash not in torrents:
-                self.statuses[t_hash] = None
-                continue
-
-            torrent = torrents[t_hash]
-
-            state = self.state_mapping.get(
-                torrent['state'],
-                DownloadState.IMPORTING_STATE
-            )
-            if torrent['state'] in ('metaDL', 'stalledDL', 'checkingDL'):
-                # Torrent is failing
-                if self.fail_timestamps[t_hash] is None:
-                    self.fail_timestamps[t_hash] = round(time())
-                    state = DownloadState.DOWNLOADING_STATE
-
-                else:
-                    timeout = self.settings.sv.failing_download_timeout
-                    if timeout and (
-                        time() - (self.fail_timestamps[t_hash] or 0)
-                        > timeout
-                    ):
-                        state = DownloadState.FAILED_STATE
-            else:
-                self.fail_timestamps[t_hash] = None
-
-            self.statuses[t_hash] = {
-                'size': torrent['total_size'],
-                'progress': round(torrent['progress'] * 100, 2),
-                'speed': torrent['dlspeed'],
-                'state': state
-            }
-
-        self.last_update = time()
-        return
-
-    def add_download(
-        self,
-        download_link: str,
-        target_folder: str,
-        download_name: Union[str, None]
-    ) -> str:
-        self._ensure_login()
-
-        if download_name is not None:
-            download_link = filename_magnet_link.sub(
-                download_name, download_link
-            )
-
-        files = {
-            'urls': (None, download_link),
-            'savepath': (None, target_folder),
-            'category': (None, Constants.EXTERNAL_DOWNLOAD_TAG)
-        }
-
-        try:
-            self.ssn.post(
-                f'{self.base_url}/api/v2/torrents/add',
-                files=files
-            )
-            self.last_api_call = round(time())
-
-        except RequestException:
-            LOGGER.exception("Can't connect to qBittorrent instance: ")
-            raise ClientNotWorking(BrokenClientReason.CONNECTION_ERROR)
-
-        t_hash = download_link.split('urn:btih:')[1].split('&')[0].lower()
-        self.statuses[t_hash] = None
-        self.fail_timestamps[t_hash] = None
-        self._update_statuses()
-        return t_hash
-
-    def get_download(self, download_id: str) -> Union[Dict[str, Any], None]:
-        if self.last_update + Constants.EXTERNAL_CLIENT_UPDATE_INTERVAL < time():
-            self._update_statuses()
-
-        return self.statuses[download_id]
-
-    def delete_download(self, download_id: str, delete_files: bool) -> None:
-        self._ensure_login()
-
-        try:
-            self.ssn.post(
-                f'{self.base_url}/api/v2/torrents/delete',
-                data={
-                    'hashes': download_id,
-                    'deleteFiles': delete_files
-                }
-            )
-            self.last_api_call = round(time())
-
-        except RequestException:
-            LOGGER.exception("Can't connect to qBittorrent instance: ")
-            raise ClientNotWorking(BrokenClientReason.CONNECTION_ERROR)
-
-        del self.statuses[download_id]
-        del self.fail_timestamps[download_id]
-        return
-
-    def on_shutdown(self) -> None:
-        if self.last_api_call + self.login_timeout > round(time()):
-            try:
-                self.ssn.post(f'{self._base_url}/api/v2/auth/logout')
-
-            except RequestException:
-                LOGGER.exception("Can't connect to qBittorrent instance: ")
-                raise ClientNotWorking(BrokenClientReason.CONNECTION_ERROR)
-        return
+    @contextmanager
+    def _login(base_url, username, password):
+        with session() as ssn:
+            ssn.headers['Referer'] = base_url.rstrip('/') + '/'
+            if username or password:
+                reply = http(ssn, 'POST', base_url + '/api/v2/auth/login',
+                             data=dict(username=username or '', password=password or ''))
+                if reply[0] != 200 or reply[2].strip() != b'Ok.':
+                    raise CredentialInvalid
+            yield ssn
 
     @classmethod
-    def test(
-        cls,
-        base_url: str,
-        username: Union[str, None] = None,
-        password: Union[str, None] = None,
-        api_token: Union[str, None] = None
-    ) -> None:
-        cls._login(
-            base_url,
-            username,
-            password
-        )
-        return
+    def test(cls, base_url, username=None, password=None, api_token=None):
+        with cls._login(base_url, username, password) as ssn:
+            version = http(ssn, 'GET', base_url + '/api/v2/app/version')
+            match = re.match(rb'v(\d+)\.(\d+)\.(\d+)', version[2].strip())
+            if version[0] != 200 or not match:
+                raise invalid()
+            if tuple(int(v) for v in match.groups()) < (4, 3, 9):
+                raise ClientNotWorking(BrokenClientReason.VERSION_NOT_SUPPORTED)
+            entries(decode_json(http(ssn, 'GET', base_url +
+                    '/api/v2/torrents/info', params={'limit': 1})))
+            categories = decode_json(
+                http(ssn, 'GET', base_url + '/api/v2/torrents/categories'))
+            if not isinstance(categories, dict):
+                raise invalid()
+            if Constants.EXTERNAL_DOWNLOAD_TAG not in categories:
+                raise ClientNotWorking(BrokenClientReason.CATEGORY_NOT_FOUND)
+
+    def _request(self, method, path, **kwargs):
+        with self._login(self.base_url, self.username, self.password) as ssn:
+            reply = http(ssn, method, self.base_url + '/api/v2/' + path, **kwargs)
+            if reply[0] != 200:
+                raise invalid()
+            return reply
+
+    def add_torrent(self, payload, target_folder, tag):
+        data = dict(savepath=target_folder, category=Constants.EXTERNAL_DOWNLOAD_TAG,
+                    tags=tag, autoTMM='false')
+        kwargs = {'data': data}
+        if payload.metainfo:
+            kwargs['files'] = {'torrents': (
+                'release.torrent', payload.metainfo, 'application/x-bittorrent')}
+        else:
+            data['urls'] = payload.magnet
+        reply = self._request('POST', 'torrents/add', **kwargs)
+        if reply[2].strip() != b'Ok.':
+            raise invalid()
+        return payload.info_hash
+
+    def add_download(self, download_link, target_folder, download_name):
+        return self.add_torrent(resolve_torrent(download_link), target_folder, Constants.EXTERNAL_DOWNLOAD_TAG)
+
+    def get_download(self, download_id):
+        jobs = entries(decode_json(self._request(
+            'GET', 'torrents/info', params={'hashes': download_id})))
+        job = next((j for j in jobs if str(j.get('hash', '')).lower()
+                   == download_id.lower()), None)
+        if job is None:
+            return None
+        phase = job.get('state')
+        done = number(job.get('progress')) >= 1 and job.get('amount_left') == 0
+        state = DS.DOWNLOADING_STATE
+        if phase in ('error', 'missingFiles'):
+            state = DS.FAILED_STATE
+        elif phase in ('pausedDL', 'stoppedDL'):
+            state = DS.PAUSED_STATE
+        elif phase == 'queuedDL':
+            state = DS.QUEUED_STATE
+        elif done and phase in ('pausedUP', 'stoppedUP'):
+            state = DS.IMPORTING_STATE
+        elif done and phase in ('uploading', 'forcedUP', 'stalledUP', 'queuedUP'):
+            state = DS.SEEDING_STATE
+        # Metadata, allocating, checking and unknown states are never importable.
+        return dict(state=state, size=int(number(job.get('total_size'))),
+                    progress=min(100, number(job.get('progress')) * 100),
+                    speed=number(job.get('dlspeed')), storage=job.get('content_path'),
+                    save_path=job.get('save_path'), tags=[t.strip() for t in str(job.get('tags', '')).split(',')])
+
+    def delete_download(self, download_id, delete_files):
+        self._request('POST', 'torrents/delete',
+                      data={'hashes': download_id, 'deleteFiles': str(bool(delete_files)).lower()})
+
+    def on_shutdown(self):
+        pass
