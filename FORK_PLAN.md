@@ -3,6 +3,32 @@
 Status: initial indexer storage foundation implemented and tested locally.
 Download-client adapters and usable Torznab/Newznab integration are still pending.
 
+## Selective adaptation checkpoint (September 20, 2026)
+
+Keep the official v1.3.2 baseline. The reference fork is
+`silasfelinus/Kapowarr` at `2a283b1d95ae0ad17d7a77acffab74424b8fb586`,
+checked out separately at `/home/andrew/Kapowarr-silas-reference`. Its main
+branch predates v1.3.2 and identifies itself as v1.3.1. Do not merge its whole
+search framework, unrelated library features, or migrations into this fork.
+
+Implemented `backend/implementations/znab.py`: shared Newznab/Torznab XML and
+HTTP operations, using namespace/enclosure handling adapted from that fork.
+Includes capability validation, recent-release requests, explicit category
+filters, pagination, HTTP/XML error handling, and bounded response bodies.
+Attribution and adaptation details are in `THIRD_PARTY_NOTICES.md`.
+
+Validation: all 47 tests pass, including 18 new protocol/parser and local HTTP
+fixture tests; configured mypy passes on 73 source files. These checks do not
+establish live Prowlarr/indexer compatibility.
+
+Still required: connect the protocol layer to the v1.3.2 indexer registry,
+async search coordinator, native connection/proxy settings, query builders,
+download preppers, authenticated settings UI, and external-download lifecycle.
+No partially working provider has been registered in the UI. SABnzbd/NZBGet
+adapters and their tests are the next useful parts to adapt, followed by the
+remaining client catalog. Preserve explicit completion states and remote path
+mapping; strengthen connection tests to reject unrelated JSON responses.
+
 The requested first release includes the full Sonarr-style download-client
 catalog, rather than a release limited to SABnzbd and Deluge. Implementation
 can proceed in independently testable changes, but the release target remains
