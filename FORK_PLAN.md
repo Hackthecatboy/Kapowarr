@@ -1,7 +1,8 @@
 # Sonarr-style indexers and download clients
 
-Status: initial indexer storage foundation implemented and tested locally.
-Download-client adapters and usable Torznab/Newznab integration are still pending.
+Status: indexer storage, shared Znab protocol, settings, and manual search are
+implemented and tested locally. Torznab/Newznab downloads and download-client
+adapters are still pending; this is not the full-catalog release.
 
 ## Selective adaptation checkpoint (September 20, 2026)
 
@@ -21,13 +22,30 @@ Validation: all 47 tests pass, including 18 new protocol/parser and local HTTP
 fixture tests; configured mypy passes on 73 source files. These checks do not
 establish live Prowlarr/indexer compatibility.
 
-Still required: connect the protocol layer to the v1.3.2 indexer registry,
-async search coordinator, native connection/proxy settings, query builders,
-download preppers, authenticated settings UI, and external-download lifecycle.
-No partially working provider has been registered in the UI. SABnzbd/NZBGet
-adapters and their tests are the next useful parts to adapt, followed by the
-remaining client catalog. Preserve explicit completion states and remote path
-mapping; strengthen connection tests to reject unrelated JSON responses.
+The next slice now registers Newznab and Torznab providers with comic query
+builders, the async search coordinator, and authenticated indexer settings.
+Settings include the full API URL, API key, enabled state, and category IDs.
+The providers inherit Kapowarr's environment proxy configuration and avoid
+forwarding indexer credentials through the DDL FlareSolverr session.
+
+Manual search returns parsed, matched comic releases. These providers are
+explicitly search-only: download buttons are disabled, automatic search/RSS
+exclude them, and direct queue submissions are rejected before preparation or
+blocklisting. Fixed coordinator removal when several indexers exhaust their
+queries in the same iteration. Prowlarr endpoints can be configured manually;
+Prowlarr import/synchronization and native application registration remain pending.
+
+Validation for this slice: 9 new integration tests cover authenticated settings,
+connection failures, protocol/query routing, matching and duplicate results,
+multiple exhausted indexers, discovery dates, and download guards. All 56 tests pass; configured mypy passes on 78 files. Both changed JavaScript
+files pass syntax checks, and the settings template renders all three sections.
+Live Prowlarr and browser/NAS verification remain pending.
+
+Still required: download preppers and the shared external-download lifecycle.
+SABnzbd/NZBGet adapters and their tests are the next useful parts to adapt,
+followed by the remaining client catalog. Preserve explicit completion states
+and remote path mapping; strengthen connection tests to reject unrelated JSON.
+See [docs/znab-indexers.md](docs/znab-indexers.md) for this build's setup and limits.
 
 The requested first release includes the full Sonarr-style download-client
 catalog, rather than a release limited to SABnzbd and Deluge. Implementation
@@ -62,10 +80,8 @@ on port 5657 with its own database, media, downloads, and database backups.
 - Added nine storage/migration regression tests. All 23 unit tests pass;
   the repository's configured mypy check passes on 70 source files.
 
-This checkpoint does not register partially working providers in the UI and
-does not constitute the full-catalog release. Next is the Newznab/Torznab
-request/result layer, query builders and download preppers, followed by the
-shared external-download lifecycle and adapter implementations.
+That initial checkpoint provided storage only. The later selective adaptation
+checkpoint above records the current protocol and search implementation.
 
 When merging future upstream migrations, reconcile migration numbers before
 shipping an upgrade; this fork now has a schema change beyond upstream v1.3.2.

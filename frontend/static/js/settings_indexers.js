@@ -7,6 +7,50 @@ const brokenClientReasonMap = {
 	invalid_credentials: "Failed to login with the given credentials"
 }
 
+function addZnabFields(form, prefix, options, values = {}) {
+	if (!options.includes('api_token')) return;
+	for (const [field, label, type, value] of [
+		['api-token', 'API Key', 'password', values.api_token || ''],
+		['categories', 'Categories', 'text', (values.categories ?? [7030]).join(', ')]
+	]) {
+		const row = document.createElement('tr');
+		const header = document.createElement('th');
+		const text = document.createElement('label');
+		const cell = document.createElement('td');
+		const input = document.createElement('input');
+		input.id = `${prefix}-${field}-input`;
+		input.type = type;
+		input.value = value;
+		text.htmlFor = input.id;
+		text.innerText = label;
+		header.appendChild(text);
+		cell.appendChild(input);
+		if (field === 'categories') {
+			input.pattern = '[ ]*[1-9][0-9]*([ ]*,[ ]*[1-9][0-9]*)*[ ]*';
+			input.title = 'Comma-separated positive category IDs; leave empty for all categories';
+			const description = document.createElement('p');
+			description.innerText = '7030 is Comics. Use category IDs supported by your indexer, or leave empty for all categories.';
+			cell.appendChild(description);
+		}
+		row.append(header, cell);
+		form.appendChild(row);
+	}
+	const row = document.createElement('tr');
+	const cell = document.createElement('td');
+	cell.colSpan = 2;
+	cell.innerText = 'Enter the full Newznab/Torznab API URL (including the per-indexer path from Prowlarr). Search is available; downloads are not connected yet.';
+	row.appendChild(cell);
+	form.appendChild(row);
+}
+
+function znabFields(form, prefix) {
+	const categories = form.querySelector(`#${prefix}-categories-input`);
+	return {
+		api_token: form.querySelector(`#${prefix}-api-token-input`)?.value ?? '',
+		categories: categories?.value.trim() ? categories.value.split(',').map(value => Number(value.trim())) : []
+	};
+}
+
 function createGCAvoidLargeDownloadsInput(inputId) {
 	const row = document.createElement('tr');
 	const header = document.createElement('th');
@@ -142,6 +186,7 @@ function loadEditIndexer(apiKey, indexerId) {
 			form.appendChild(gcServicePreferenceInput);
 		};
 
+		addZnabFields(form, 'edit', clientOptions, clientData.result);
 		showWindow('edit-indexer-window');
 	});
 };
@@ -165,6 +210,7 @@ function saveEditIndexer() {
 				title: form.querySelector('#edit-title-input').value,
 				enabled: form.querySelector('#edit-enabled-input').checked,
 				url: form.querySelector('#edit-url-input').value,
+				...znabFields(form, 'edit'),
 				gc_service_preference: gcServicePreference,
 				gc_avoid_large_downloads: form.querySelector('#edit-gc-avoid-input')?.checked ?? null,
 			};
@@ -182,6 +228,7 @@ async function testEditIndexer(apiKey) {
 	hide([error]);
 	const form = document.querySelector('#edit-indexer-form tbody');
 	const testButton = document.querySelector('#test-indexer-edit');
+	if (form.querySelector('#edit-categories-input')?.reportValidity() === false) return false;
 	testButton.classList.remove('show-success', 'show-fail');
 
 	const prefTable = document.querySelectorAll("#pref-table select")
@@ -193,6 +240,7 @@ async function testEditIndexer(apiKey) {
 		download_type: parseInt(form.dataset.download_type),
 		client_type: form.dataset.type,
 		url: form.querySelector('#edit-url-input').value,
+		...znabFields(form, 'edit'),
 		gc_service_preference: gcServicePreference,
 		gc_avoid_large_downloads: form.querySelector('#edit-gc-avoid-input')?.checked ?? null,
 	};
@@ -210,6 +258,11 @@ async function testEditIndexer(apiKey) {
 			hide([], [error]);
 		};
 		return json.result.success;
+	}).catch(() => {
+		testButton.classList.add('show-fail');
+		error.innerText = 'Unable to test indexer. Check the URL, API key, and categories.';
+		hide([], [error]);
+		return false;
 	});
 };
 
@@ -265,6 +318,8 @@ function loadAddIndexer(apiKey, downloadType, clientType) {
 		if (clientOptions.required_tokens.includes('gc_service_preference'))
 			form.appendChild(createGCServicePreferenceInput('add-gc-service-preference-input'));
 
+		form.querySelector('#add-enabled-input').checked = true;
+		addZnabFields(form, 'add', clientOptions.required_tokens);
 		showWindow('add-indexer-window');
 	});
 };
@@ -292,6 +347,7 @@ function saveAddIndexer() {
 				title: form.querySelector('#add-title-input').value,
 				enabled: form.querySelector('#add-enabled-input').checked,
 				url: form.querySelector('#add-url-input').value,
+				...znabFields(form, 'add'),
 				gc_service_preference: gcServicePreference,
 				gc_avoid_large_downloads: form.querySelector('#add-gc-avoid-input')?.checked ?? null,
 			};
@@ -318,6 +374,7 @@ async function testAddIndexer(apiKey) {
 	hide([error]);
 	const form = document.querySelector('#add-indexer-form tbody');
 	const testButton = document.querySelector('#test-indexer-add');
+	if (form.querySelector('#add-categories-input')?.reportValidity() === false) return false;
 	testButton.classList.remove('show-success', 'show-fail');
 
 	const prefTable = document.querySelectorAll("#pref-table select")
@@ -329,6 +386,7 @@ async function testAddIndexer(apiKey) {
 		download_type: parseInt(form.dataset.download_type),
 		client_type: form.dataset.type,
 		url: form.querySelector('#add-url-input').value,
+		...znabFields(form, 'add'),
 		gc_service_preference: gcServicePreference,
 		gc_avoid_large_downloads: form.querySelector('#add-gc-avoid-input')?.checked ?? null,
 	};
@@ -339,17 +397,25 @@ async function testAddIndexer(apiKey) {
 		if (json.result.success)
 			// Test successful
 			testButton.classList.add('show-success');
-		else
+		else {
 			// Test failed
 			testButton.classList.add('show-fail');
 			error.innerText = brokenClientReasonMap[json.result.description];
 			hide([], [error]);
+		}
 		return json.result.success;
+	}).catch(() => {
+		testButton.classList.add('show-fail');
+		error.innerText = 'Unable to test indexer. Check the URL, API key, and categories.';
+		hide([], [error]);
+		return false;
 	});
 };
 
 const typeToList = {
-	1: document.querySelector("#ddl-indexer-list")
+	1: document.querySelector("#ddl-indexer-list"),
+	2: document.querySelector("#torrent-indexer-list"),
+	3: document.querySelector("#usenet-indexer-list")
 };
 
 function loadIndexers(apiKey) {

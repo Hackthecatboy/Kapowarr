@@ -379,6 +379,13 @@ function showManualSearch(api_key, issue_id=null) {
 				e => addManualSearch(result.link, result.indexer_id, true, force_download_button, api_key, issue_id);
 
 			const blocklist_button = entry.querySelector('.search-action-column :nth-child(3)')
+			if (result.download_supported === false) {
+				for (const button of [download_button, force_download_button]) {
+					button.disabled = true;
+					button.onclick = null;
+					button.title = 'Search only: download support is not connected yet';
+				}
+			}
 			if (result.match_issue === null || !result.match_issue.includes('blocklist'))
 				// Show blocklist button
 				blocklist_button.onclick =

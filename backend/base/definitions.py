@@ -13,6 +13,8 @@ from threading import Event, Thread
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List,
                     Mapping, Tuple, TypedDict, TypeVar, Union)
 
+from typing_extensions import NotRequired
+
 if TYPE_CHECKING:
     from threading import Timer
 
@@ -702,6 +704,7 @@ class SearchQuery(TypedDict):
 
 
 class SearchResultData(FilenameData):
+    download_supported: NotRequired[bool]
     link: str
     display_title: str
     size: int
@@ -1150,6 +1153,9 @@ class Task(ABC):
 
 
 class IndexerClient(ABC):
+    supports_downloads: bool = True
+    "Whether this provider has a connected download preparation path."
+
     client_type: str
     "The name of the indexer client (e.g. 'Torznab')"
 

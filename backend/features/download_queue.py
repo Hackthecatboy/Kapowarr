@@ -171,8 +171,7 @@ class DownloadHandler(metaclass=Singleton):
         """
         LOGGER.info(
             'Adding download for ' +
-            f'volume {volume_id}{f" issue {issue_id}" if issue_id else ""}: ' +
-            f'{link}'
+            f'volume {volume_id}{f" issue {issue_id}" if issue_id else ""}'
         )
 
         if self.link_in_queue(link):
@@ -180,6 +179,10 @@ class DownloadHandler(metaclass=Singleton):
             return []
 
         indexer = IndexerClients.get_client(indexer_id)
+        if not indexer.supports_downloads:
+            raise EnqueuingDownloadFailure(
+                EnqueuingDownloadFailureReason.NO_WORKING_LINKS
+            )
         PrepperClass = DownloadPreppers.get_prepper(
             indexer.download_type, indexer.client_type
         )

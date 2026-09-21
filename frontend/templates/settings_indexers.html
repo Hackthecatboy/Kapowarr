@@ -103,5 +103,16 @@
 			</button>
 		</div>
 	</div>
+	{% for kind, title in [('torrent', 'Torrents'), ('usenet', 'Usenet')] %}
+	<div class="settings-container">
+		<h2>{{ title }}</h2>
+		<p>Search only in this development build. Download support is still being connected.</p>
+		<div id="{{ kind }}-indexer-list" class="client-list">
+			<button class="add-button icon-text-color" title="Add {{ kind }} indexer">
+				<img src="{{url_base}}/static/img/cancel.svg" alt="">
+			</button>
+		</div>
+	</div>
+	{% endfor %}
 </main>
 {% endblock main %}

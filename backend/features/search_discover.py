@@ -28,6 +28,7 @@ async def _get_all_new_releases() -> List[SearchResultData]:
         indexer
         for indexer in IndexerClients.get_all_clients()
         if indexer.get_indexer_data()["enabled"]
+        and indexer.supports_downloads
     ]
 
     last_rss_sync = (

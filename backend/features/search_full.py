@@ -35,7 +35,8 @@ class SearchCoordinator:
     def __init__(
         self,
         volume_id: int,
-        wanted_issues: List[int]
+        wanted_issues: List[int],
+        downloadable_only: bool = False
     ) -> None:
         """Initalise the coordinator.
 
@@ -59,6 +60,8 @@ class SearchCoordinator:
         self.indexers: List[IndexerTeam] = []
         for client in IndexerClients.get_all_clients():
             if not client.get_indexer_data()["enabled"]:
+                continue
+            if downloadable_only and not client.supports_downloads:
                 continue
 
             self.indexers.append({
@@ -205,7 +208,8 @@ class SearchCoordinator:
         ]
 
         # Remove indexers that should stop
-        for idx, (action, _) in list(enumerate(actions)):
+        for idx in range(len(actions) - 1, -1, -1):
+            action, _ = actions[idx]
             if action == SearchAction.STOP:
                 del actions[idx]
                 await self.indexers[idx]["indexer"].shutdown()
@@ -356,7 +360,7 @@ def manual_search(
 
     coordinator = SearchCoordinator(volume_id, wanted_issues)
     results = run(coordinator.search())
-    LOGGER.debug('Manual search results: %s', results)
+    LOGGER.debug('Manual search returned %d results', len(results))
     return results
 
 
@@ -386,6 +390,8 @@ def choose_downloads(
     searchable_issue_numbers = {i[1] for i in open_issues}
 
     for search_result in search_results:
+        if not search_result.get('download_supported', True):
+            continue
         # Determine what issues the result covers
         if search_result["special_version"]:
             search_result["issue_number"] = 1.0
@@ -478,7 +484,8 @@ def auto_search(
 
     coordinator = SearchCoordinator(
         volume_id,
-        [i[0] for i in searchable_issues]
+        [i[0] for i in searchable_issues],
+        downloadable_only=True
     )
     search_results = [
         r
