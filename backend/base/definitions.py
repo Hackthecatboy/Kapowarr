@@ -478,6 +478,7 @@ class BrokenClientReason(BaseEnum):
     (aside from an invalid link)
     """
 
+    CATEGORY_NOT_FOUND = "category_not_found"
     CONNECTION_ERROR = "connection_error"
     NOT_CLIENT_INSTANCE = "not_client_instance"
     VERSION_NOT_SUPPORTED = "version_not_supported"
@@ -593,6 +594,7 @@ service on the GC page
 class DownloadService(BaseEnum):
     "All possible download services/protocols"
 
+    USENET = "Usenet"
     MEGA = "Mega"
     MEDIAFIRE = "MediaFire"
     WETRANSFER = "WeTransfer"
@@ -606,6 +608,7 @@ class DownloadService(BaseEnum):
 class DownloadClientIdentifier(BaseEnum):
     "The database identifiers for the download clients"
 
+    USENET = "usenet"
     DDL = "direct"
     MEDIAFIRE = "mf"
     MEDIAFIRE_FOLDER = "mf_folder"

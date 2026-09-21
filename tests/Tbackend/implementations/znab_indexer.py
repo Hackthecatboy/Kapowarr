@@ -36,6 +36,7 @@ class ZnabIntegration(unittest.TestCase):
         self.db.executescript(DB_SCHEMA)
         cursor = self.db.cursor(factory=KapowarrCursor)
         self.start_patch('backend.implementations.indexer_client_manager.get_db', return_value=cursor)
+        self.start_patch('backend.implementations.release_store.get_db', return_value=cursor)
         settings = self.start_patch('frontend.api.Settings')
         settings.return_value.sv.api_key = 'kapowarr-key'
         self.start_patch('frontend.api.StartTypeHandlers.diffuse_timer')
@@ -116,7 +117,7 @@ class ZnabIntegration(unittest.TestCase):
             self.assertEqual(release['series'], 'Example Comic')
             self.assertEqual(release['issue_number'], 1.0)
             self.assertEqual(release['indexer_id'], client.id)
-            self.assertFalse(release['download_supported'])
+            self.assertEqual(release['download_supported'], protocol == DownloadType.USENET)
             params = self.transport.call_args.args[0]
             self.assertEqual(params['q'], query['query'])
             self.assertEqual(params['cat'], '7030')
@@ -152,7 +153,7 @@ class ZnabIntegration(unittest.TestCase):
         self.assertNotIn('indexer-secret', str(logger.mock_calls))
 
     def test_automatic_search_and_discovery_exclude_search_only_providers(self):
-        client = self.add()
+        client = self.add(DownloadType.TORRENT)
         with patch('backend.features.search_full.Volume') as volume:
             volume.return_value.get_issues.return_value = []
             with patch('backend.features.search_full.SearchActionPlanner'):
@@ -177,7 +178,7 @@ class ZnabIntegration(unittest.TestCase):
         self.assertNotIn('q', self.transport.call_args.args[0])
 
     def test_direct_enqueue_rejects_search_only_without_prepper_or_blocklisting(self):
-        client = self.add()
+        client = self.add(DownloadType.TORRENT)
         handler = object.__new__(DownloadHandler)
         handler.link_in_queue = Mock(return_value=False)
         with patch('backend.features.download_queue.DownloadPreppers.get_prepper') as prepper, \

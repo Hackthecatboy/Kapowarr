@@ -103,7 +103,7 @@ def discover_downloads() -> Dict[int, List[SearchResultData]]:
             matched_releases, volume.get_open_issues(), issue_data
         )
 
-    LOGGER.debug('Matching releases from RSS Sync: %s', full_matches)
+    LOGGER.debug('RSS sync matched %d volumes', len(full_matches))
 
     Settings().update({"last_rss_sync": round(time())})
     return full_matches

@@ -27,8 +27,10 @@ from backend.base.logging import LOGGER
 from backend.features.post_processing import (PostProcessor,
                                               PostProcessorTorrentsComplete,
                                               PostProcessorTorrentsCopy)
+from backend.features.usenet_downloads import run_usenet
 from backend.implementations.blocklist import add_to_blocklist
 from backend.implementations.download_client_manager import DownloadClients
+from backend.implementations.download_clients.Usenet import UsenetDownload
 from backend.implementations.download_prepper_manager import DownloadPreppers
 from backend.implementations.external_client_manager import ExternalClients
 from backend.implementations.indexer_client_manager import IndexerClients
@@ -132,9 +134,7 @@ class DownloadHandler(metaclass=Singleton):
                     name=f'ExternalDownloadThread-{download.id}'
                 )
                 download.download_thread = thread
-                thread.start()
 
-            WebSocket().emit(AddedToQueueEvent(download))
         return downloads
 
     def add(
@@ -227,6 +227,11 @@ class DownloadHandler(metaclass=Singleton):
             forced_match=force_match
         )
         self.queue += result
+        get_db().connection.commit()
+        for download in result:
+            WebSocket().emit(AddedToQueueEvent(download))
+            if isinstance(download, ExternalDownload):
+                download.download_thread.start()
 
         self._process_queue()
         return [r.as_dict() for r in result]
@@ -252,7 +257,7 @@ class DownloadHandler(metaclass=Singleton):
         cursor = get_db()
         downloads = cursor.execute("""
             SELECT
-                id, volume_id, client_type, external_client_id,
+                id, volume_id, client_type, external_client_id, external_id, external_phase,
                 download_link, covered_issues,
                 force_original_name,
                 source_type, source_name,
@@ -264,7 +269,7 @@ class DownloadHandler(metaclass=Singleton):
             LOGGER.info('Loading downloads')
 
         for download in iter_commit(downloads):
-            LOGGER.debug(f'Download from database: {dict(download)}')
+            LOGGER.debug('Loading queued download %s', download['id'])
             if download['covered_issues'] is None:
                 covered_issues = None
 
@@ -305,6 +310,9 @@ class DownloadHandler(metaclass=Singleton):
                     **kwargs
                 )
                 dl_instance.id = download['id']
+                if isinstance(dl_instance, UsenetDownload):
+                    dl_instance._external_id = download['external_id']
+                    dl_instance.phase = download['external_phase']
 
             except DownloadLinkBroken:
                 # Link is broken
@@ -345,6 +353,10 @@ class DownloadHandler(metaclass=Singleton):
                 [dl_instance],
                 forced_match=download['force_original_name']
             )
+            get_db().connection.commit()
+            WebSocket().emit(AddedToQueueEvent(dl_instance))
+            if isinstance(dl_instance, ExternalDownload):
+                dl_instance.download_thread.start()
 
         self._process_queue()
         return
@@ -416,6 +428,10 @@ class DownloadHandler(metaclass=Singleton):
             download (ExternalDownload): The external download to run.
                 One of the entries in self.queue.
         """
+        if isinstance(download, UsenetDownload):
+            run_usenet(self, download)
+            return
+
         download.run()
 
         ws = WebSocket()

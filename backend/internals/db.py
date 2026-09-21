@@ -491,6 +491,8 @@ CREATE TABLE IF NOT EXISTS download_queue(
     volume_id INTEGER NOT NULL,
     client_type VARCHAR(255) NOT NULL,
     external_client_id INTEGER,
+    external_id TEXT,
+    external_phase TEXT NOT NULL DEFAULT 'queued',
 
     download_link TEXT NOT NULL,
     covered_issues VARCHAR(255),
@@ -505,6 +507,14 @@ CREATE TABLE IF NOT EXISTS download_queue(
 
     FOREIGN KEY (external_client_id) REFERENCES external_download_clients(id),
     FOREIGN KEY (volume_id) REFERENCES volumes(id)
+);
+CREATE TABLE IF NOT EXISTS indexer_releases(
+    indexer_id INTEGER NOT NULL,
+    link TEXT NOT NULL,
+    release_data TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY(indexer_id, link),
+    FOREIGN KEY(indexer_id) REFERENCES indexer_clients(id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS download_history(
     web_link TEXT,

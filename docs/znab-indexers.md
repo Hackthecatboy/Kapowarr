@@ -1,7 +1,8 @@
 # Newznab and Torznab development setup
 
 This build supports configuring and manually searching Newznab (Usenet) and
-Torznab (torrents). Downloads from these providers are not connected yet.
+Torznab (torrents). Newznab downloads are connected to SABnzbd/NZBGet; see
+[Usenet setup and limitations](usenet-downloads.md). Torznab remains search-only.
 GetComics continues to use its existing download path.
 
 1. Open Settings → Indexers. Add Newznab under Usenet or Torznab under Torrents.
@@ -20,10 +21,12 @@ Each indexer can have a separate configuration. Edit an entry to change its
 settings or delete it. Existing Kapowarr HTTP(S) proxy and bypass settings apply
 to requests. Indexer requests do not go through FlareSolverr.
 
-Search results have disabled download/force-download buttons with a search-only
-explanation. Automatic searches and RSS downloads exclude these providers until
-the download pipeline is implemented. Direct API attempts to enqueue these
-results also fail without adding them to the queue or blocklist.
+Torznab results have disabled download/force-download buttons with a search-only
+explanation and are excluded from automatic searches and RSS downloads. Direct
+API attempts to enqueue Torznab results also fail without queueing or blocklisting.
+Newznab results can be downloaded after configuring a Usenet client and shared
+folders. Search metadata is retained for enqueue matching; run a fresh search
+if an older result is unavailable.
 
 Prowlarr import/synchronization and an entry in its Applications menu are not
 implemented. Live Prowlarr/indexer and Synology verification are still pending;

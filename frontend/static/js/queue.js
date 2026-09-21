@@ -49,7 +49,7 @@ function updateQueueEntry(obj) {
 	const tr = document.querySelector(`#queue > tr[data-id="${obj.id}"]`);
 	tr.dataset.status = obj.status;
 	tr.querySelector('td:nth-child(1)').innerText =
-		obj.status.charAt(0).toUpperCase() + obj.status.slice(1);
+		obj.status.charAt(0).toUpperCase() + obj.status.slice(1) + (obj.error ? `: ${obj.error}` : '');
 	tr.querySelector('td:nth-child(4)').innerText =
 		convertSize(obj.size, 1);
 	tr.querySelector('td:nth-child(5)').innerText =

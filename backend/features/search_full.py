@@ -499,7 +499,7 @@ def auto_search(
     ):
         # We're searching for one "item", so just grab first search result.
         result = search_results[:1] if search_results else []
-        LOGGER.debug('Auto search results: %s', result)
+        LOGGER.debug('Auto search returned %d results', len(result))
         return result
 
     # We're searching for a volume, so we might download multiple search results.
@@ -510,5 +510,5 @@ def auto_search(
         volume_issues
     )
 
-    LOGGER.debug('Auto search results: %s', chosen_downloads)
+    LOGGER.debug('Auto search selected %d results', len(chosen_downloads))
     return chosen_downloads

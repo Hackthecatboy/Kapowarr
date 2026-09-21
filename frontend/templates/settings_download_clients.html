@@ -154,7 +154,7 @@
 		<div id="choose-torrent-list"></div>
 	{% endset %}
 
-	{{ window(False, "choose-torrent-window", "Choose Torrent Client", choose_content) }}
+	{{ window(False, "choose-torrent-window", "Choose Download Client", choose_content) }}
 
 	{% set add_content %}
 		<p class="error hidden" id="add-error"></p>
@@ -192,7 +192,7 @@
 		<button id="submit-torrent-add" type="submit" form="add-torrent-form">Add</button>
 	{% endset %}
 
-	{{ window(False, "add-torrent-window", "Add Torrent Client", add_content, add_submit) }}
+	{{ window(False, "add-torrent-window", "Add Download Client", add_content, add_submit) }}
 
 	{% set edit_content %}
 		<p class="error hidden" id="edit-error"></p>
@@ -231,7 +231,7 @@
 		<button id="submit-torrent-edit" type="submit" form="edit-torrent-form">Save</button>
 	{% endset %}
 
-	{{ window(False, "edit-torrent-window", "Edit Torrent Client", edit_content, edit_submit) }}
+	{{ window(False, "edit-torrent-window", "Edit Download Client", edit_content, edit_submit) }}
 
 	{% set add_remote_mapping_content %}
 		<p class="error hidden" id="add-mapping-error"></p>
@@ -343,5 +343,17 @@
 			</table>
 		</div>
 	</div>
+    <div class="settings-container">
+        <h2>Usenet Clients</h2>
+        <p>Create a category named <strong>kapowarr</strong> in SABnzbd or NZBGet before testing.
+        Configure it to repair and unpack into individual job folders under Kapowarr's download folder.
+        Use Remote Path Mapping below if the container paths differ. Completed files are copied into the library;
+        originals remain in the client. This development slice preserves filenames.</p>
+        <div id="usenet-client-list" class="client-list">
+            <button id="add-usenet-client" class="add-button icon-text-color" title="Add Usenet client">
+                <img src="{{url_base}}/static/img/cancel.svg" alt="">
+            </button>
+        </div>
+    </div>
 </main>
 {% endblock main %}

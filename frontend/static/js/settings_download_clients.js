@@ -1,4 +1,5 @@
 const brokenClientReasonMap = {
+    category_not_found: "Create a category named kapowarr in the download client before testing",
     connection_error: "Failed to connect",
     not_client_instance: "What was connected to was not the expected client",
     version_not_supported: "The version is not supported",
@@ -73,6 +74,7 @@ function loadEditTorrent(api_key, id) {
 	.then(client_data => {
 		const client_type = client_data.result.client_type;
 		form.dataset.type = client_type;
+		form.dataset.downloadType = client_data.result.download_type;
 		const client_options = client_data.result.required_tokens;
 
 		form.querySelector('#edit-title-input').value =
@@ -159,7 +161,7 @@ async function testEditTorrent(api_key) {
 	const test_button = document.querySelector('#test-torrent-edit');
 	test_button.classList.remove('show-success', 'show-fail');
 	const data = {
-		download_type: 2,
+		download_type: Number(form.dataset.downloadType),
 		client_type: form.dataset.type,
 		base_url: form.querySelector('#edit-baseurl-input').value,
 		username: form.querySelector('#edit-username-input')?.value || null,
@@ -200,25 +202,27 @@ function deleteTorrent(api_key) {
 	});
 };
 
-function loadTorrentList(api_key) {
+function loadTorrentList(api_key, downloadType = 2) {
 	const table = document.querySelector('#choose-torrent-list');
 	table.innerHTML = '';
 
 	fetchAPI('/externalclients/options', api_key)
 	.then(json => {
-		Object.keys(json.result[2]).forEach(c => {
+		Object.keys(json.result[downloadType]).forEach(c => {
 			const entry = document.createElement('button');
 			entry.innerText = c;
-			entry.onclick = e => loadAddTorrent(api_key, c);
+			entry.onclick = e => loadAddTorrent(api_key, c, downloadType);
 			table.appendChild(entry);
 		});
 		showWindow('choose-torrent-window');
 	});
 };
 
-function loadAddTorrent(api_key, client_type) {
+function loadAddTorrent(api_key, client_type, downloadType = 2) {
 	const form = document.querySelector('#add-torrent-form tbody');
 	form.dataset.type = client_type;
+	form.dataset.downloadType = downloadType;
+	form.querySelector('#add-enabled-input').checked = true;
 	form.querySelectorAll(
 		'tr:not(:has(input#add-title-input, input#add-enabled-input, input#add-baseurl-input))'
 	).forEach(el => el.remove());
@@ -231,7 +235,7 @@ function loadAddTorrent(api_key, client_type) {
 
 	fetchAPI('/externalclients/options', api_key)
 	.then(json => {
-		const client_options = json.result[2][client_type];
+		const client_options = json.result[downloadType][client_type];
 
 		if (client_options.includes('username'))
 			form.appendChild(createUsernameInput('add-username-input'));
@@ -255,7 +259,7 @@ function saveAddTorrent() {
 
 			const form = document.querySelector('#add-torrent-form tbody');
 			const data = {
-				download_type: 2,
+				download_type: Number(form.dataset.downloadType),
 				client_type: form.dataset.type,
 				title: form.querySelector('#add-title-input').value,
 				enabled: form.querySelector('#add-enabled-input').checked,
@@ -292,7 +296,7 @@ async function testAddTorrent(api_key) {
 	const test_button = document.querySelector('#test-torrent-add');
 	test_button.classList.remove('show-success', 'show-fail');
 	const data = {
-		download_type: 2,
+		download_type: Number(form.dataset.downloadType),
 		client_type: form.dataset.type,
 		base_url: form.querySelector('#add-baseurl-input').value,
 		username: form.querySelector('#add-username-input')?.value || null,
@@ -318,11 +322,10 @@ async function testAddTorrent(api_key) {
 function loadTorrentClients(api_key) {
 	fetchAPI('/externalclients', api_key)
 	.then(json => {
-		const table = document.querySelector('#torrent-client-list'),
-			add_mapping_select = document.querySelector('#add-mapping-client-input'),
+		const add_mapping_select = document.querySelector('#add-mapping-client-input'),
 			edit_mapping_select = document.querySelector('#edit-mapping-client-input');
 
-		document.querySelectorAll('#torrent-client-list > :not(:first-child)')
+		document.querySelectorAll('#torrent-client-list > :not(:first-child), #usenet-client-list > :not(:first-child)')
 			.forEach(el => el.remove());
 		add_mapping_select.innerHTML = ''
 		edit_mapping_select.innerHTML = ''
@@ -331,7 +334,7 @@ function loadTorrentClients(api_key) {
 			const entry = document.createElement('button');
 			entry.onclick = (e) => loadEditTorrent(api_key, client.id);
 			entry.innerText = client.title;
-			table.appendChild(entry);
+			document.querySelector(client.download_type === 3 ? '#usenet-client-list' : '#torrent-client-list').appendChild(entry);
 
 			const option = document.createElement('option');
 			option.innerText = client.title;
@@ -522,6 +525,7 @@ usingApiKey()
 	document.querySelector('#test-torrent-edit').onclick = e => testEditTorrent(api_key);
 	document.querySelector('#test-torrent-add').onclick = e => testAddTorrent(api_key);
 	document.querySelector('#add-torrent-client').onclick = e => loadTorrentList(api_key);
+	document.querySelector('#add-usenet-client').onclick = e => loadTorrentList(api_key, 3);
 });
 
 document.querySelector('#edit-torrent-form').action = 'javascript:saveEditTorrent()';

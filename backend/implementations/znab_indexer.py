@@ -12,6 +12,7 @@ from backend.base.definitions import (Constants, QueryResult,
 from backend.base.file_extraction import extract_filename_data
 from backend.base.logging import LOGGER
 from backend.implementations.indexer_client_manager import BaseIndexerClient
+from backend.implementations.release_store import remember_release
 from backend.implementations.znab import ZnabClient, ZnabPage, ZnabRelease
 
 
@@ -48,12 +49,15 @@ class ZnabIndexer(BaseIndexerClient):
                                  limit=self._page_limit)
 
     def _result(self, release: ZnabRelease) -> SearchResultData:
-        return {
+        result = {
             **extract_filename_data(release.title, assume_volume_number=False, fix_year=True),
             'link': release.link, 'display_title': release.title, 'size': release.size,
             'indexer_id': self.id, 'indexer_title': self.title,
             'download_supported': self.supports_downloads
         }
+        if self.supports_downloads:
+            remember_release(result)
+        return result
 
     async def search(self, query: SearchQuery) -> QueryResult:
         try:

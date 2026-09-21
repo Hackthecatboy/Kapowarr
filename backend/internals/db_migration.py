@@ -1330,3 +1330,19 @@ def _migrate_add_indexer_api_configuration() -> None:
             "ALTER TABLE indexer_clients "
             "ADD COLUMN categories TEXT NOT NULL DEFAULT '[]';"
         )
+
+
+@DatabaseMigrationHandler.register_handler(52)
+def _migrate_external_job_identity():
+    cursor = get_db()
+    columns = {row[1] for row in cursor.execute('PRAGMA table_info(download_queue)')}
+    if 'external_id' not in columns:
+        cursor.execute('ALTER TABLE download_queue ADD COLUMN external_id TEXT')
+    if 'external_phase' not in columns:
+        cursor.execute("ALTER TABLE download_queue ADD COLUMN external_phase TEXT NOT NULL DEFAULT 'queued'")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS indexer_releases(
+        indexer_id INTEGER NOT NULL, link TEXT NOT NULL,
+        release_data TEXT NOT NULL, fetched_at INTEGER NOT NULL,
+        PRIMARY KEY(indexer_id, link),
+        FOREIGN KEY(indexer_id) REFERENCES indexer_clients(id) ON DELETE CASCADE
+    )""")

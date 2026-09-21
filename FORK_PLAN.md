@@ -1,10 +1,42 @@
 # Sonarr-style indexers and download clients
 
-Status: indexer storage, shared Znab protocol, settings, and manual search are
-implemented and tested locally. Torznab/Newznab downloads and download-client
-adapters are still pending; this is not the full-catalog release.
+Status: Newznab/Torznab search and settings are implemented. Newznab now connects
+to SABnzbd/NZBGet through a durable submission journal and a separate Usenet
+worker/import path. Torznab remains search-only. Full-catalog release and live
+client/NAS verification are still pending.
 
-## Selective adaptation checkpoint (September 20, 2026)
+## Usenet download checkpoint (September 20, 2026)
+
+- Registered SABnzbd/NZBGet with native settings and category-aware connection
+  tests. Adapted queue/history semantics from the reference fork; rebuilt the
+  transport and registration against v1.3.2. Attribution is in THIRD_PARTY_NOTICES.
+- Added bounded requests without credential-bearing URL logs and explicit
+  completion handling; repair/unpack is never inferred complete from progress.
+- Stored searched release metadata for Newznab preparation and comic matching.
+  Enabled Newznab manual/automatic/RSS downloads; Torznab remains guarded.
+- Added migration 52 to 53 for external job ID/submission phase and release
+  metadata. Existing jobs survive. New Usenet jobs reconnect after restart;
+  uncertain submissions/imports pause for review instead of replaying.
+- Fixed queue insertion/commit ordering before external threads start.
+- Added completed-directory checks and remote mappings. Imports preserve client
+  originals, copy into a unique library subfolder, and verify library issue
+  bindings before recording success or cleaning client history.
+- Exposed review reasons in queue API/WebSocket/UI. Added 27 regression tests,
+  including a real library scan of a temporary CBZ and local HTTP fixtures.
+- All 83 tests pass; configured mypy and JavaScript syntax checks pass. DOM checks
+  cover SABnzbd/NZBGet forms and switching to/from the existing torrent form.
+  Live clients, actual browser rendering, and NAS verification remain pending.
+
+Limits: fixed `kapowarr` category and normal priority, URL-based NZB submission,
+copy import preserving filenames, no automatic Usenet rename/conversion yet,
+and manual review for interrupted imports. Existing torrent jobs do not use the
+new journal yet. See [docs/usenet-downloads.md](docs/usenet-downloads.md).
+
+Next work: live verification of this Usenet slice, then torrent-file/magnet
+preparation for Torznab, shared lifecycle integration for existing torrent
+clients, and Deluge. Continue the remaining full client catalog afterwards.
+
+## Earlier protocol/search checkpoint (September 20, 2026)
 
 Keep the official v1.3.2 baseline. The reference fork is
 `silasfelinus/Kapowarr` at `2a283b1d95ae0ad17d7a77acffab74424b8fb586`,
@@ -22,13 +54,13 @@ Validation: all 47 tests pass, including 18 new protocol/parser and local HTTP
 fixture tests; configured mypy passes on 73 source files. These checks do not
 establish live Prowlarr/indexer compatibility.
 
-The next slice now registers Newznab and Torznab providers with comic query
+That search slice registered Newznab and Torznab providers with comic query
 builders, the async search coordinator, and authenticated indexer settings.
 Settings include the full API URL, API key, enabled state, and category IDs.
 The providers inherit Kapowarr's environment proxy configuration and avoid
 forwarding indexer credentials through the DDL FlareSolverr session.
 
-Manual search returns parsed, matched comic releases. These providers are
+Manual search returns parsed, matched comic releases. At that checkpoint both providers were
 explicitly search-only: download buttons are disabled, automatic search/RSS
 exclude them, and direct queue submissions are rejected before preparation or
 blocklisting. Fixed coordinator removal when several indexers exhaust their
@@ -41,10 +73,9 @@ multiple exhausted indexers, discovery dates, and download guards. All 56 tests 
 files pass syntax checks, and the settings template renders all three sections.
 Live Prowlarr and browser/NAS verification remain pending.
 
-Still required: download preppers and the shared external-download lifecycle.
-SABnzbd/NZBGet adapters and their tests are the next useful parts to adapt,
-followed by the remaining client catalog. Preserve explicit completion states
-and remote path mapping; strengthen connection tests to reject unrelated JSON.
+The Usenet checkpoint above subsequently connected Newznab downloads and
+SABnzbd/NZBGet. The broader shared lifecycle and remaining client catalog are
+still work in progress.
 See [docs/znab-indexers.md](docs/znab-indexers.md) for this build's setup and limits.
 
 The requested first release includes the full Sonarr-style download-client
