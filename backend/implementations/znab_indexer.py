@@ -63,9 +63,12 @@ class ZnabIndexer(BaseIndexerClient):
         try:
             page = await get_running_loop().run_in_executor(
                 None, partial(self._page, query['query'], query['page']))
-        except (ClientNotWorking, CredentialInvalid):
-            LOGGER.warning('Indexer %s search failed; check its connection settings', self.id)
+        except (ClientNotWorking, CredentialInvalid) as error:
+            reason = error.reason.value if isinstance(error, ClientNotWorking) else 'invalid_credentials'
+            LOGGER.warning('Indexer %s search failed (%s); check its connection settings', self.id, reason)
             return QueryResult([], False)
+        LOGGER.debug('Indexer %s query %r page %s categories %s returned %s releases',
+                     self.id, query['query'], query['page'], self._categories, len(page.releases))
         return QueryResult([self._result(r) for r in page.releases], page.next_page_available)
 
     async def discover(self, last_check: datetime) -> List[SearchResultData]:

@@ -23,6 +23,7 @@ class IndexerTeam(TypedDict):
     indexer: IndexerClient
     query_builder: QueryBuilder
     search_action_planner: SearchActionPlanner
+    remaining_wanted_issues: List[int]
 
 
 class SearchCoordinator:
@@ -52,7 +53,7 @@ class SearchCoordinator:
             for i in self.issue_data
         }
 
-        self.wanted_issues = wanted_issues
+        self.wanted_issues = list(wanted_issues)
         self.found_results: List[MatchedSearchResultData] = []
         self.found_links: Set[str] = set()
         self.is_issue_search = len(self.wanted_issues) == 1
@@ -64,6 +65,7 @@ class SearchCoordinator:
             if downloadable_only and not client.supports_downloads:
                 continue
 
+            remaining_wanted_issues = list(wanted_issues)
             self.indexers.append({
                 "indexer": client,
                 "query_builder": QueryBuilders.get_builder(
@@ -72,8 +74,9 @@ class SearchCoordinator:
                 "search_action_planner": SearchActionPlanner(
                     self.volume_data,
                     self.issue_data,
-                    wanted_issues
-                )
+                    remaining_wanted_issues
+                ),
+                "remaining_wanted_issues": remaining_wanted_issues
             })
 
         return
@@ -250,12 +253,14 @@ class SearchCoordinator:
             for (indexer_query, indexer_results), team in zip(
                 all_results, self.indexers
             ):
+                # One indexer's match must not cancel another's query variants.
+                remaining_wanted_issues = team["remaining_wanted_issues"]
                 stats = SearchIterationStats(
                     result_count=len(indexer_results.results),
                     matched_count=0,
                     new_match_count=0,
                     next_page_available=indexer_results.next_page_available,
-                    remaining_wanted_issues=self.wanted_issues,
+                    remaining_wanted_issues=remaining_wanted_issues,
                     total_available_variations=indexer_query[
                         'total_available_variations'
                     ]
@@ -276,12 +281,10 @@ class SearchCoordinator:
                     if match_result['match']:
                         stats.matched_count += 1
 
-                        if is_duplicate:
-                            pass
-
-                        elif indexer_result["special_version"]:
-                            self.wanted_issues.clear()
-                            stats.new_match_count += 1
+                        if indexer_result["special_version"]:
+                            if remaining_wanted_issues:
+                                remaining_wanted_issues.clear()
+                                stats.new_match_count += 1
 
                         elif (
                             indexer_result["issue_number"] is not None
@@ -296,7 +299,7 @@ class SearchCoordinator:
                                         <= n_end
                                 ):
                                     try:
-                                        self.wanted_issues.remove(issue.id)
+                                        remaining_wanted_issues.remove(issue.id)
                                         newly_covered_issue = True
                                     except ValueError:
                                         pass

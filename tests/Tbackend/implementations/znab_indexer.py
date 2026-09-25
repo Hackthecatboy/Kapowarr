@@ -142,6 +142,40 @@ class ZnabIntegration(unittest.TestCase):
             self.transport.side_effect = lambda params: CAPS if params['t'] == 'caps' else feed('')
             self.assertEqual(asyncio.run(SearchCoordinator(1, [1]).search()), [])
 
+    def test_one_indexer_match_does_not_stop_another_indexers_fallback(self):
+        from backend.base.definitions import QueryResult
+        from unittest.mock import AsyncMock
+
+        early = self.add(DownloadType.TORRENT)
+        later = self.add(DownloadType.USENET)
+        issue = SimpleNamespace(id=1, calculated_issue_number=1.0,
+                                issue_number='1', date='2026-09-20')
+        data = SimpleNamespace(title='Example Comic', alt_title=None, year=2026,
+                               volume_number=1, special_version=SpecialVersion.NORMAL)
+        early_result = asyncio.run(early.search(dict(query='Example', page=1))).results[0]
+        later_result = {**early_result, 'link': 'https://indexer.example/later',
+                        'indexer_id': later.id, 'indexer_title': later.title}
+        # The second indexer needs the final title-only variation.
+        for downloadable_only in (False, True):
+            with self.subTest(downloadable_only=downloadable_only), \
+                    patch('backend.features.search_full.Volume') as volume, \
+                    patch('backend.features.search_full.IndexerClients.get_all_clients', return_value=[early, later]), \
+                    patch('backend.implementations.matching.blocklist_contains', return_value=False), \
+                    patch.object(early, 'search', new=AsyncMock(return_value=QueryResult([early_result], False))) as early_search, \
+                    patch.object(later, 'search', new=AsyncMock(side_effect=[
+                        QueryResult([], False), QueryResult([], False),
+                        QueryResult([later_result], False)])) as later_search:
+                volume.return_value.get_data.return_value = data
+                volume.return_value.get_issues.return_value = [issue]
+                wanted = [1]
+                results = asyncio.run(SearchCoordinator(1, wanted, downloadable_only).search())
+                self.assertEqual({r['indexer_id'] for r in results}, {early.id, later.id})
+                self.assertTrue(all(r['match'] for r in results))
+                self.assertEqual(early_search.await_count, 1)
+                self.assertEqual(later_search.await_count, 3)
+                self.assertEqual(later_search.call_args.args[0]['query'], 'Example Comic')
+                self.assertEqual(wanted, [1])
+
     def test_torznab_search_metadata_routes_to_torrent_prepper(self):
         from backend.implementations.download_prepper_manager import \
             DownloadPreppers
