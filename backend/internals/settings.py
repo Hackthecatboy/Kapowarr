@@ -124,6 +124,7 @@ class PublicSettingsValues:
     seeding_handling: SeedingHandling = SeedingHandling.COPY
     delete_completed_downloads: bool = True
 
+    pack_inbox_folder: str = ''
     download_min_size_mb: int = 0
     download_max_size_mb: int = 0
     download_preferred_formats: CommaList = field(default_factory=lambda: CommaList(''))

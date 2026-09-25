@@ -607,3 +607,15 @@ CREATE TABLE IF NOT EXISTS prowlarr_indexers(
 );
 """
 DB_SCHEMA += PROWLARR_SCHEMA
+
+
+PACK_INBOX_SCHEMA = """
+CREATE TABLE IF NOT EXISTS pack_inbox(
+    id INTEGER PRIMARY KEY, root TEXT NOT NULL, relative_path TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE, status TEXT NOT NULL, message TEXT NOT NULL,
+    size INTEGER NOT NULL, mtime TEXT NOT NULL, volume_id INTEGER,
+    issue_ids TEXT NOT NULL, destination TEXT,
+    UNIQUE(root,relative_path)
+);
+"""
+DB_SCHEMA += PACK_INBOX_SCHEMA

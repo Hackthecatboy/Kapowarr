@@ -72,7 +72,7 @@ extensions.
 Native registration in Prowlarr's Applications menu is a separate integration
 question; importing its indexers does not establish that support.
 
-### 4. Comic download preferences and upgrades — preferences implemented
+### 4. Comic download preferences and upgrades — preferences user-verified
 
 - [x] Preferred formats and whole-release size limits.
 - [x] Literal release-title term preferences/exclusions (including group names)
@@ -81,8 +81,29 @@ question; importing its indexers does not establish that support.
 - [x] Explain selection/rejection reasons in manual search.
 
 See [download preferences](docs/download-preferences.md) for rules and the
-search-only NAS test. Live verification is pending. Automatic replacement of
+search-only NAS test. The user confirmed the preferences working. Automatic replacement of
 existing issues remains unimplemented; missing-issue selection is unchanged.
+
+### Pack workflow — new priority before remaining automation
+
+The user requested mixed-series/weekly-pack detection for downloads made outside
+Kapowarr, followed by recurring automatic download and ingestion.
+
+1. **Pack inbox (implemented; NAS validation next):** configured completed folder,
+   per-file matching to existing series/issues, selectable missing-issue copies,
+   and review rows for unmatched/ambiguous content. Source files remain intact.
+   A minimal persistent copy journal prevents unsafe replay of interrupted writes.
+   See [pack inbox setup and test](docs/pack-inbox.md).
+2. **Recurring scans and repeat protection (pending):** scheduled scanning,
+   content identity across moved/renamed files, recovery/review controls, and
+   duplicate prevention suitable for unattended repeated ingestion.
+3. **Recurring pack download rules (pending):** indexer/title/category/size rules
+   for weekly or mixed-series packs, remembered releases, and completed downloads
+   routed through the shared pack importer.
+
+Unknown series initially require review; automatic addition must be a separate
+opt-in feature. Outer pack archive extraction is also future work. Ordinary
+single-series download/import continues alongside this inbox.
 
 ### 5. Failed-download handling
 

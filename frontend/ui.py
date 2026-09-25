@@ -71,6 +71,11 @@ def ui_add_volume():
     return render('add_volume.html')
 
 
+@ui.route('/pack-inbox', methods=methods)
+def ui_pack_inbox():
+    return render('pack_inbox.html')
+
+
 @ui.route('/library-import', methods=methods)
 def ui_library_import():
     return render('library_import.html')

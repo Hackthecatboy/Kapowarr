@@ -49,7 +49,7 @@ new rules; explicit Force Download retains its override behavior.
 Automated tests cover boundaries, unknown metadata, format order, term matching,
 exclusion precedence, ranking, RSS selection, enqueue revalidation/override,
 settings persistence and invalid-setting rejection. UI and desktop/mobile layout
-checks pass. Live NAS preference validation remains pending.
+checks pass. The user confirmed preferences working on the NAS.
 
 ## Upgrade boundary
 

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Pack Inbox{% endblock %}
+{% block css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pack_inbox.css') }}">
+{% endblock %}
+{% block js %}<script src="{{ url_for('static', filename='js/pack_inbox.js') }}" defer></script>{% endblock %}
+{% block main %}
+<main id="pack-inbox-page"><div class="settings-container">
+<h2>Pack Inbox</h2>
+<p>Scan completed mixed-series or weekly folders for individual CBZ, CBR, CB7 and PDF files. Matches are copied to existing library series; originals stay untouched. Outer ZIP/RAR/7z archives must be extracted first. Files modified in the last minute wait for another scan.</p>
+<form id="pack-inbox-form">
+<label for="inbox-folder">Completed pack folder inside Kapowarr</label>
+<input id="inbox-folder" type="text" required placeholder="/pack-inbox">
+<div class="inbox-actions"><button type="submit">Save Folder &amp; Scan</button><button id="inbox-refresh" type="button">Refresh Results</button><button id="inbox-select" type="button">Select First 100 Matches</button><button id="inbox-import" type="button" disabled>Import Selected Copies</button></div>
+</form>
+<p id="inbox-status" role="status"></p>
+<p>Only unique missing-issue matches can be selected. Unmatched, ambiguous and partially owned files remain for review. This scan does not add new series or replace existing comics. Check that downloads are fully completed before importing.</p>
+<div class="inbox-table"><table><thead><tr><th>Select</th><th>File</th><th>Status / Match</th></tr></thead><tbody id="inbox-results"></tbody></table></div>
+</div></main>
+{% endblock %}

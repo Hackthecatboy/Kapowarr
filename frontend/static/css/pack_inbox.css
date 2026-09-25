@@ -1,0 +1,10 @@
+#pack-inbox-page p { margin-block: .75rem; }
+#inbox-folder { display: block; width: min(50rem, 100%); padding: .6rem; margin-top: .5rem; }
+.inbox-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-block: 1rem; }
+.inbox-actions button { padding: .6rem 1rem; border-radius: 4px; background: var(--accent-color); color: var(--nav-background-color); }
+.inbox-actions button:disabled { opacity: .5; }
+.inbox-table { overflow-x: auto; }
+#pack-inbox-page table { min-width: 36rem; }
+#pack-inbox-page table th { width: auto; text-align: left; }
+#inbox-results td { border-top: 1px solid var(--border-color); overflow-wrap: anywhere; }
+#inbox-results input[type="checkbox"] { width: 1.1rem; }

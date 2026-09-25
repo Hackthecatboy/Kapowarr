@@ -48,6 +48,7 @@ from backend.implementations.naming import (generate_volume_folder_name,
                                             preview_mass_rename)
 from backend.implementations.remote_mapping import RemoteMappings
 from backend.implementations import prowlarr
+from backend.features import pack_inbox
 from backend.implementations.root_folders import RootFolders
 from backend.implementations.volumes import Library, delete_issue_file
 from backend.internals.db import get_db
@@ -791,6 +792,27 @@ def api_remote_mapping(id: int):
     elif request.method == 'DELETE':
         remote_mapping.delete()
         return return_api({})
+
+
+@api.route('/pack-inbox', methods=['GET'])
+@error_handler
+@auth
+def api_pack_inbox():
+    return return_api(pack_inbox.listing())
+
+
+@api.route('/pack-inbox/<action>', methods=['POST'])
+@error_handler
+@auth
+def api_pack_inbox_action(action: str):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise InvalidKeyValue('body', 'Expected an object')
+    if action == 'scan':
+        return return_api(pack_inbox.scan(data.get('folder')))
+    if action == 'import':
+        return return_api(pack_inbox.import_selected(data.get('items')))
+    raise InvalidKeyValue('action', action)
 
 
 @api.route('/prowlarr', methods=['GET'])

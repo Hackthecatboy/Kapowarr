@@ -1367,3 +1367,9 @@ def _migrate_prowlarr_import():
     for statement in PROWLARR_SCHEMA.split(';'):
         if statement.strip():
             get_db().execute(statement)
+
+
+@DatabaseMigrationHandler.register_handler(55)
+def _migrate_pack_inbox():
+    from backend.internals.db import PACK_INBOX_SCHEMA
+    get_db().execute(PACK_INBOX_SCHEMA)

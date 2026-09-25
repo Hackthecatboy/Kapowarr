@@ -10,8 +10,10 @@ See [ROADMAP.md](ROADMAP.md) for current priorities and acceptance criteria.
 Queue recovery is user-verified on Synology. Torrent runtime validation is blocked
 by the reported Prowlarr/Bitmag issue. Selected Prowlarr import and manual refresh
 are user-verified on Synology; see [docs/prowlarr-sync.md](docs/prowlarr-sync.md).
-Release preferences are implemented and await NAS validation; see
-[docs/download-preferences.md](docs/download-preferences.md). Checkpoints below are historical;
+Release preferences are user-verified on Synology; see
+[docs/download-preferences.md](docs/download-preferences.md). The first mixed-series
+pack inbox is implemented and awaits NAS validation; see
+[docs/pack-inbox.md](docs/pack-inbox.md). Checkpoints below are historical;
 the roadmap distinguishes current implementation from live verification.
 
 ## GHCR setup checkpoint (September 24, 2026)
