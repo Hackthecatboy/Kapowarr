@@ -478,6 +478,8 @@ class BrokenClientReason(BaseEnum):
     (aside from an invalid link)
     """
 
+    SESSION_REJECTED = 'session_rejected'
+    LOGIN_ACCESS_DENIED = 'login_access_denied'
     CATEGORY_NOT_FOUND = "category_not_found"
     CONNECTION_ERROR = "connection_error"
     NOT_CLIENT_INSTANCE = "not_client_instance"

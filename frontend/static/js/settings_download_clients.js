@@ -1,4 +1,6 @@
 const brokenClientReasonMap = {
+    session_rejected: "qBittorrent rejected the API session after the login step. Check Web UI HTTPS/cookie and reverse-proxy settings. See Kapowarr logs for the failed stage.",
+    login_access_denied: "qBittorrent's login endpoint returned HTTP 401/403. Check for an IP ban or access restrictions in qBittorrent/proxy logs.",
     category_not_found: "Create a category named kapowarr in the download client before testing",
     connection_error: "Failed to connect",
     not_client_instance: "What was connected to was not the expected client",

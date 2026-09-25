@@ -4,6 +4,7 @@ import re
 from contextlib import contextmanager
 
 from backend.base.custom_exceptions import ClientNotWorking, CredentialInvalid
+from backend.base.logging import LOGGER
 from backend.base.definitions import (BrokenClientReason, Constants,
                                       DownloadState as DS, DownloadType,
                                       ExternalClientField as ECF)
@@ -24,11 +25,27 @@ class qBittorrent(BaseExternalClient):
         with session() as ssn:
             ssn.headers['Referer'] = base_url.rstrip('/') + '/'
             if username or password:
-                reply = http(ssn, 'POST', base_url + '/api/v2/auth/login',
-                             data=dict(username=username or '', password=password or ''))
-                if reply[0] != 200 or reply[2].strip() != b'Ok.':
+                try:
+                    reply = http(ssn, 'POST', base_url + '/api/v2/auth/login',
+                                 data=dict(username=username or '', password=password or ''))
+                except CredentialInvalid:
+                    LOGGER.warning('qBittorrent login endpoint denied access (HTTP 401/403)')
+                    raise ClientNotWorking(BrokenClientReason.LOGIN_ACCESS_DENIED) from None
+                if reply[0] == 200 and reply[2].strip() == b'Fails.':
                     raise CredentialInvalid
-            yield ssn
+                # 5.2 returns an empty HTTP 200; older versions return "Ok.".
+                # Subsequent API requests must still pass session authentication.
+                if reply[0] != 200 or reply[2].strip() not in (b'Ok.', b''):
+                    LOGGER.warning(
+                        'Unexpected qBittorrent login response (HTTP %s); credentials and response body omitted',
+                        reply[0])
+                    raise invalid()
+            try:
+                yield ssn
+            except CredentialInvalid:
+                LOGGER.warning(
+                    'qBittorrent API session rejected after login or authentication bypass (HTTP 401/403)')
+                raise ClientNotWorking(BrokenClientReason.SESSION_REJECTED) from None
 
     @classmethod
     def test(cls, base_url, username=None, password=None, api_token=None):
@@ -48,10 +65,10 @@ class qBittorrent(BaseExternalClient):
             if Constants.EXTERNAL_DOWNLOAD_TAG not in categories:
                 raise ClientNotWorking(BrokenClientReason.CATEGORY_NOT_FOUND)
 
-    def _request(self, method, path, **kwargs):
+    def _request(self, method, path, accepted_statuses=(200,), **kwargs):
         with self._login(self.base_url, self.username, self.password) as ssn:
             reply = http(ssn, method, self.base_url + '/api/v2/' + path, **kwargs)
-            if reply[0] != 200:
+            if reply[0] not in accepted_statuses:
                 raise invalid()
             return reply
 
@@ -64,9 +81,22 @@ class qBittorrent(BaseExternalClient):
                 'release.torrent', payload.metainfo, 'application/x-bittorrent')}
         else:
             data['urls'] = payload.magnet
-        reply = self._request('POST', 'torrents/add', **kwargs)
+        reply = self._request('POST', 'torrents/add', accepted_statuses=(200, 202), **kwargs)
         if reply[2].strip() != b'Ok.':
-            raise invalid()
+            # 5.2 returns a structured submission result instead of "Ok.".
+            result = decode_json((200, reply[1], reply[2]))
+            if not isinstance(result, dict) or result.get('failure_count') != 0:
+                raise invalid()
+            added = result.get('added_torrent_ids')
+            complete = (reply[0] == 200 and result.get('success_count') == 1
+                        and result.get('pending_count') == 0
+                        and isinstance(added, list) and len(added) == 1
+                        and isinstance(added[0], str)
+                        and added[0].lower() == payload.info_hash.lower())
+            pending = (reply[0] == 202 and result.get('success_count') == 0
+                       and result.get('pending_count') == 1 and added == [])
+            if not (complete or pending):
+                raise invalid()
         return payload.info_hash
 
     def add_download(self, download_link, target_folder, download_name):

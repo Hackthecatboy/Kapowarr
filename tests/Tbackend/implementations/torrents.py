@@ -89,6 +89,29 @@ class TorrentMetadata(unittest.TestCase):
 
 
 class TorrentAdapters(unittest.TestCase):
+    def test_qbittorrent_52_submission_identity_and_pending_status(self):
+        import json
+        client = self.client(qBittorrent)
+        cases = [
+            (200, 1, 0, 0, [HASH], True),
+            (202, 0, 0, 1, [], True),
+            (200, 1, 0, 0, ['0' * 40], False),
+            (200, 1, 1, 0, [HASH], False),
+            (200, 0, 0, 0, [], False),
+            (200, 0, 0, 1, [], False),
+            (202, 0, 0, 2, [], False),
+        ]
+        for status, successes, failures, pending, ids, accepted in cases:
+            with self.subTest(status=status, ids=ids, failures=failures, pending=pending):
+                body = json.dumps(dict(success_count=successes, failure_count=failures,
+                                       pending_count=pending, added_torrent_ids=ids)).encode()
+                with patch.object(client, '_request', return_value=(status, {}, body)):
+                    if accepted:
+                        self.assertEqual(client.add_torrent(magnet_payload(MAGNET), '/target', 'owned'), HASH)
+                    else:
+                        with self.assertRaises(ClientNotWorking):
+                            client.add_torrent(magnet_payload(MAGNET), '/target', 'owned')
+
     def client(self, cls):
         result = object.__new__(cls)
         result._base_url, result._username, result._password = 'http://client.example', 'user', 'password'
@@ -359,7 +382,69 @@ class ManagedTorrents(unittest.TestCase):
 
 
 class TorrentHTTP(unittest.TestCase):
+    def test_login_and_session_failures_are_distinguished(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from threading import Thread
+
+        scenario = {}
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                self.send_response(scenario['status'])
+                if scenario.get('secure_cookie'):
+                    self.send_header('Set-Cookie', 'SID=fixture; Path=/; Secure')
+                self.end_headers()
+                self.wfile.write(scenario['body'])
+
+            def do_GET(self):
+                # A secure cookie received over HTTP must not be replayed.
+                scenario['cookie'] = self.headers.get('Cookie')
+                self.send_response(403)
+                self.end_headers()
+
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            url = f'http://127.0.0.1:{server.server_port}'
+            for status, body, secure_cookie, reason in (
+                (403, b'Forbidden', False, 'login_access_denied'),
+                (401, b'Unauthorized', False, 'login_access_denied'),
+                (200, b'Fails.', False, 'invalid_credentials'),
+                (200, b'<html>proxy login</html>', False, 'failed_processing_response'),
+                (200, b'Ok.', False, 'session_rejected'),
+                (200, b'Ok.', True, 'session_rejected'),
+                (200, b'', False, 'session_rejected'),
+            ):
+                with self.subTest(reason=reason, status=status, secure_cookie=secure_cookie):
+                    scenario.clear()
+                    scenario.update(status=status, body=body, secure_cookie=secure_cookie)
+                    with patch.dict('os.environ', {'NO_PROXY': '127.0.0.1', 'no_proxy': '127.0.0.1'}):
+                        if reason == 'invalid_credentials':
+                            with self.assertRaises(CredentialInvalid):
+                                qBittorrent.test(url, 'user', 'fixture')
+                        else:
+                            with self.assertRaises(ClientNotWorking) as error:
+                                qBittorrent.test(url, 'user', 'fixture')
+                            self.assertEqual(error.exception.reason.value, reason)
+                    if secure_cookie:
+                        self.assertIsNone(scenario['cookie'])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
     def test_real_http_login_upload_rpc_challenge_and_delete(self):
+        self.exercise_http_clients(False)
+
+    def test_qbittorrent_52_empty_login_and_json_submission(self):
+        self.exercise_http_clients(True)
+
+    def exercise_http_clients(self, modern_qbit):
         import json
         import os
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -399,10 +484,14 @@ class TorrentHTTP(unittest.TestCase):
                 if self.path.endswith('/auth/login'):
                     if parse_qs(data.decode()).get('password') != ['fixture']:
                         return self.reply(b'Fails.')
-                    return self.reply(b'Ok.', headers={'Set-Cookie': 'SID=fixture; Path=/'})
+                    return self.reply(b'' if modern_qbit else b'Ok.',
+                                      headers={'Set-Cookie': 'SID=fixture; Path=/'})
                 if self.path.startswith('/api/v2/'):
                     if self.headers.get('Cookie') != 'SID=fixture':
                         return self.reply(b'', 403)
+                    if self.path.endswith('/add') and modern_qbit:
+                        return self.reply(json.dumps(dict(success_count=1, failure_count=0,
+                                                         pending_count=0, added_torrent_ids=[HASH])).encode())
                     return self.reply(b'Ok.' if self.path.endswith('/add') else b'')
                 if self.headers.get('X-Transmission-Session-Id') != 'fixture-sid':
                     return self.reply(b'', 409, {'X-Transmission-Session-Id': 'fixture-sid'})

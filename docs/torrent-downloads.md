@@ -5,11 +5,16 @@ Torznab now supports manual downloads, automatic search and RSS through
 the managed torrent runner. Deluge and the remaining client catalog are still
 planned; this is not the full Sonarr-client release.
 
+The adapter supports both older `Ok.` login/submission responses and
+qBittorrent 5.2's empty successful login and structured submission responses.
+Login endpoint access denial and rejection of a subsequent API session are
+reported separately from an explicit credentials failure.
+
 ## Prepare the isolated Container Manager test
 
-The [Synology development guide](synology-development.md) describes the source
-checkout and local image build. This change does not publish an image or alter
-your NAS. Use a separate database, library and download folder for the test.
+The [GHCR setup guide](synology-ghcr.md) describes running the public development
+image in Container Manager. The [local build guide](synology-development.md)
+remains available. Use a separate database, library and download folder for the test.
 
 1. Enable the torrent client's Web UI/API. For qBittorrent, create a category
    named **kapowarr**. Connection testing verifies the category exists.
