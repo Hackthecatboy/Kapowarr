@@ -1,5 +1,12 @@
 # Private GitHub images on Synology
 
+**Setup checkpoint (September 24):** the first GitHub build succeeded, but
+an unauthenticated registry check could retrieve the `dev` manifest. Check
+the package's actual visibility before proceeding with private deployment.
+Further publication is blocked while anonymous access works. GitHub does not
+allow a public package to become private again; if confirmed public, choose a
+new private package name and review removal of the exposed package separately.
+
 GitHub Actions builds `Dockerfile.synology` for the DS2422+ (`linux/amd64`) on
 pushes to `feature/sonarr-integrations`, after the Python tests pass. Images go
 to `ghcr.io/hackthecatboy/kapowarr:dev`, with a second `sha-FULL_COMMIT_ID` tag

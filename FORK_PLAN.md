@@ -12,8 +12,10 @@ The full client catalog and live client/NAS verification remain pending.
   walkthrough in [docs/synology-ghcr.md](docs/synology-ghcr.md).
 - The local source-build Compose file and update script remain available.
 - Local validation: 104 tests pass, Compose configuration resolves, workflow
-  YAML and embedded Python validate. GitHub build and NAS runtime validation
-  still need completion; enable fork Actions if disabled.
+  YAML and embedded Python validate. First GitHub build succeeded, but the
+  post-build anonymous manifest check found access was allowed. Added a
+  pre/post-publish anonymous-access guard. Package privacy needs resolution
+  before private deployment; NAS runtime validation is still pending.
 
 ## Torrent checkpoint (September 21, 2026)
 
