@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/logs.css') }}">
+{% endblock %}
+{% block js %}
+<script src="{{ url_for('static', filename='js/logs.js') }}" defer></script>
+{% endblock %}
+{% block main %}
+<main id="logs-page">
+    <h2>Logs</h2>
+    <p>Recent Kapowarr logs, oldest to newest. Download logs for the full retained history.</p>
+    <p>For search query details, set Log Level to Debug in
+        <a href="{{url_base}}/settings/general">Settings → General</a>, reproduce the problem,
+        then refresh here. Return to Info when finished.</p>
+    <div class="logs-toolbar">
+        <button id="refresh-logs" type="button">Refresh</button>
+        <button id="download-logs" type="button">Download Logs</button>
+        <label><input id="auto-refresh-logs" type="checkbox"> Auto-refresh every 5 seconds</label>
+        <label for="filter-logs">Filter text</label>
+        <input id="filter-logs" type="search" placeholder="Search displayed lines">
+    </div>
+    <p id="logs-status" role="status">Loading logs…</p>
+    <pre id="logs-output" tabindex="0" aria-label="Recent log entries"></pre>
+</main>
+{% endblock %}

@@ -9,7 +9,7 @@ import logging.config
 from io import StringIO
 from logging.handlers import RotatingFileHandler
 from os.path import exists, isdir, isfile, join
-from typing import Any, Union
+from typing import Any, Tuple, Union
 
 from backend.base.definitions import Constants
 
@@ -225,6 +225,35 @@ def get_log_file_contents() -> StringIO:
             sio.writelines(f)
 
     return sio
+
+
+def get_recent_logs() -> Tuple[str, bool]:
+    """Read at most 256 KiB and return the newest 1,000 physical log lines."""
+    remaining = 256 * 1024
+    chunks = []
+    truncated = False
+    path = get_log_filepath()
+    for filename in (path, path + '.1'):
+        try:
+            with open(filename, 'rb') as handle:
+                handle.seek(0, 2)
+                size = handle.tell()
+                if not remaining:
+                    truncated = truncated or size > 0
+                    continue
+                start = max(0, size - remaining)
+                handle.seek(start)
+                chunk = handle.read(remaining)
+                remaining -= len(chunk)
+                if start:
+                    truncated = True
+                    # Do not display a fragment of an older line or UTF-8 character.
+                    chunk = chunk.partition(b'\n')[2]
+                chunks.insert(0, chunk)
+        except FileNotFoundError:
+            continue
+    lines = b''.join(chunks).decode('utf-8', errors='replace').splitlines()
+    return '\n'.join(lines[-1000:]), truncated or len(lines) > 1000
 
 
 def set_log_level(

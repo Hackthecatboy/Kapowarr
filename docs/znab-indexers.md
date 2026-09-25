@@ -27,6 +27,13 @@ Categories filter; temporarily clearing that filter can help diagnose category
 mismatches. Debug logs show each Znab query, category filter and result count,
 without logging API keys or download URLs.
 
+To inspect those messages in the application, set Settings → General → Log
+Level to Debug and save, repeat the search, then open System → Logs. Use Refresh
+or enable auto-refresh, and filter for `Indexer`. The viewer shows recent lines;
+Download Logs includes the full retained log files. Return the log level to Info
+when finished. The Categories field is pre-filled with `7030` when adding a
+Znab indexer; leaving that value unchanged saves the filter.
+
 Each indexer can have a separate configuration. Edit an entry to change its
 settings or delete it. Existing Kapowarr HTTP(S) proxy and bypass settings apply
 to requests. Indexer requests do not go through FlareSolverr.

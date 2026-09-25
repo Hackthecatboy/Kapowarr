@@ -1,0 +1,15 @@
+#logs-page { min-width: 0; padding: 1rem; color: var(--text-color); }
+#logs-page h2 { font-size: 2rem; border-bottom: 1px solid var(--border-color); }
+#logs-page p { margin: 0.8rem 0; }
+#logs-page .logs-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; }
+#logs-output {
+    max-height: 65vh;
+    overflow: auto;
+    padding: 1rem;
+    border: 1px solid currentColor;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: monospace;
+    font-size: 0.85rem;
+    user-select: text;
+}

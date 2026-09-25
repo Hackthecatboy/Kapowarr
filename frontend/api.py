@@ -21,7 +21,7 @@ from backend.base.definitions import (BlocklistReason, BlocklistReasonID,
                                       StatusType, VolumeData)
 from backend.base.files import folder_path
 from backend.base.helpers import hash_credential
-from backend.base.logging import LOGGER, get_log_file_contents
+from backend.base.logging import LOGGER, get_log_file_contents, get_recent_logs
 from backend.features.download_queue import (DownloadHandler,
                                              delete_download_history,
                                              get_download_history)
@@ -314,6 +314,15 @@ def api_logs():
         mimetype="application/octet-stream",
         download_name=f'Kapowarr_log_{datetime.now().strftime("%Y_%m_%d_%H_%M")}.txt'
     ), 200
+
+
+@api.route('/system/logs/recent', methods=['GET'])
+@error_handler
+@auth
+def api_recent_logs():
+    text, truncated = get_recent_logs()
+    body, status = return_api({'text': text, 'truncated': truncated})
+    return body, status, {'Cache-Control': 'no-store'}
 
 
 @api.route('/system/tasks', methods=['GET', 'POST'])

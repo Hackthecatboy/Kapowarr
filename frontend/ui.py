@@ -101,6 +101,11 @@ def ui_status():
     return render('status.html')
 
 
+@ui.route('/system/logs', methods=methods)
+def ui_logs():
+    return render('logs.html')
+
+
 @ui.route('/system/tasks', methods=methods)
 def ui_tasks():
     return render('tasks.html')
