@@ -524,7 +524,9 @@ class IndexerClients:
 
         return [
             cls.clients[DownloadType(client[0])][client[1]](client[2])
-            for client in cursor
+            # Constructors query the same thread-local cursor. Materialize the
+            # complete list before those queries replace its current result set.
+            for client in cursor.fetchall()
         ]
 
     @classmethod

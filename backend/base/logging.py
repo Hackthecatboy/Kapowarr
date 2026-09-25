@@ -6,6 +6,7 @@ Setting up, using and altering the logger
 
 import logging
 import logging.config
+import re
 from io import StringIO
 from logging.handlers import RotatingFileHandler
 from os.path import exists, isdir, isfile, join
@@ -19,7 +20,40 @@ class UpToInfoFilter(logging.Filter):
         return record.levelno <= logging.INFO
 
 
-class ErrorColorFormatter(logging.Formatter):
+# Match named credentials rather than arbitrary IDs or search terms. Format the
+# whole record first so dependency messages and exception traces are covered.
+_SECRET_FIELD = (
+    r"api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|"
+    r"token|password|passwd|secret|x-api-key"
+)
+_QUERY_SECRET = re.compile(
+    rf"(?i)([?&](?:{_SECRET_FIELD}|link)=)[^\s&\"'<>]*"
+)
+_NAMED_SECRET = re.compile(
+    rf"(?i)(?<![\w-])((?:{_SECRET_FIELD})[\"']?\s*[:=]\s*)"
+    r"(?:\[REDACTED\]|\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s&,;\"'<>}\]]+)"
+)
+_AUTH_SECRET = re.compile(
+    r"(?i)(\bauthorization[\"']?\s*[:=]\s*[\"']?(?:Bearer|Basic)\s+)"
+    r"[^\s\"',;}]+"
+)
+_URL_CREDENTIALS = re.compile(r"(?i)(https?://)[^/\s@]+@")
+
+
+def redact_log_text(text: str) -> str:
+    """Mask named credentials and signed Prowlarr links in log output."""
+    text = _QUERY_SECRET.sub(r"\1[REDACTED]", text)
+    text = _NAMED_SECRET.sub(r"\1[REDACTED]", text)
+    text = _AUTH_SECRET.sub(r"\1[REDACTED]", text)
+    return _URL_CREDENTIALS.sub(r"\1[REDACTED]@", text)
+
+
+class RedactingFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        return redact_log_text(super().format(record))
+
+
+class ErrorColorFormatter(RedactingFormatter):
     def format(self, record: logging.LogRecord) -> Any:
         result = super().format(record)
         return f"\033[1;31:40m{result}\033[0m"
@@ -52,6 +86,7 @@ LOGGING_CONFIG = {
     "disable_existing_loggers": False,
     "formatters": {
         "simple": {
+            "()": RedactingFormatter,
             "format": "[%(asctime)s][%(levelname)s] %(message)s",
             "datefmt": "%H:%M:%S"
         },
@@ -61,6 +96,7 @@ LOGGING_CONFIG = {
             "datefmt": "%H:%M:%S"
         },
         "detailed": {
+            "()": RedactingFormatter,
             "format": "%(asctime)s | %(processName)s | %(threadName)s | %(filename)sL%(lineno)s | %(levelname)s | %(message)s",
             "datefmt": "%Y-%m-%dT%H:%M:%S%z",
         }
@@ -221,8 +257,8 @@ def get_log_file_contents() -> StringIO:
         lf = file + ext
         if not exists(lf):
             continue
-        with open(lf, 'r') as f:
-            sio.writelines(f)
+        with open(lf, 'r', encoding='utf-8', errors='replace') as f:
+            sio.write(redact_log_text(f.read()))
 
     return sio
 
@@ -252,7 +288,9 @@ def get_recent_logs() -> Tuple[str, bool]:
                 chunks.insert(0, chunk)
         except FileNotFoundError:
             continue
-    lines = b''.join(chunks).decode('utf-8', errors='replace').splitlines()
+    lines = redact_log_text(
+        b''.join(chunks).decode('utf-8', errors='replace')
+    ).splitlines()
     return '\n'.join(lines[-1000:]), truncated or len(lines) > 1000
 
 

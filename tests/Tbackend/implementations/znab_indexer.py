@@ -142,6 +142,27 @@ class ZnabIntegration(unittest.TestCase):
             self.transport.side_effect = lambda params: CAPS if params['t'] == 'caps' else feed('')
             self.assertEqual(asyncio.run(SearchCoordinator(1, [1]).search()), [])
 
+    def test_all_saved_indexers_are_loaded_and_searched(self):
+        torrent = self.add(DownloadType.TORRENT)
+        usenet = self.add(DownloadType.USENET)
+        clients = IndexerClients.get_all_clients()
+        self.assertEqual([client.id for client in clients], [torrent.id, usenet.id])
+        issue = SimpleNamespace(id=1, calculated_issue_number=1.0,
+                                issue_number='1', date='2026-09-20')
+        data = SimpleNamespace(title='Example Comic', alt_title=None, year=2026,
+                               volume_number=1, special_version=SpecialVersion.NORMAL)
+        self.transport.reset_mock()
+        with patch('backend.features.search_full.Volume') as volume, \
+                patch('backend.implementations.matching.blocklist_contains', return_value=False):
+            volume.return_value.get_data.return_value = data
+            volume.return_value.get_issues.return_value = [issue]
+            coordinator = SearchCoordinator(1, [1])
+            self.assertEqual(len(coordinator.indexers), 2)
+            asyncio.run(coordinator.search())
+        searches = [call.args[0] for call in self.transport.call_args_list
+                    if call.args[0]['t'] == 'search']
+        self.assertEqual(len(searches), 2)
+
     def test_one_indexer_match_does_not_stop_another_indexers_fallback(self):
         from backend.base.definitions import QueryResult
         from unittest.mock import AsyncMock

@@ -36,6 +36,10 @@ Download Logs includes the full retained log files. Return the log level to Info
 when finished. The Categories field is pre-filled with `7030` when adding a
 Znab indexer; leaving that value unchanged saves the filter.
 
+Named API keys, passwords, authorization credentials and signed Prowlarr link
+tokens are redacted from new console/file logs and from log viewing/downloads.
+Older files are sanitized when read; their originals on disk are not rewritten.
+
 Each indexer can have a separate configuration. Edit an entry to change its
 settings or delete it. Existing Kapowarr HTTP(S) proxy and bypass settings apply
 to requests. Indexer requests do not go through FlareSolverr.
