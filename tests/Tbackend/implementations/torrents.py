@@ -419,6 +419,7 @@ class TorrentHTTP(unittest.TestCase):
                 (200, b'Ok.', False, 'session_rejected'),
                 (200, b'Ok.', True, 'session_rejected'),
                 (200, b'', False, 'session_rejected'),
+                (204, b'', False, 'session_rejected'),
             ):
                 with self.subTest(reason=reason, status=status, secure_cookie=secure_cookie):
                     scenario.clear()
@@ -484,7 +485,7 @@ class TorrentHTTP(unittest.TestCase):
                 if self.path.endswith('/auth/login'):
                     if parse_qs(data.decode()).get('password') != ['fixture']:
                         return self.reply(b'Fails.')
-                    return self.reply(b'' if modern_qbit else b'Ok.',
+                    return self.reply(b'' if modern_qbit else b'Ok.', code=204 if modern_qbit else 200,
                                       headers={'Set-Cookie': 'SID=fixture; Path=/'})
                 if self.path.startswith('/api/v2/'):
                     if self.headers.get('Cookie') != 'SID=fixture':
@@ -492,6 +493,8 @@ class TorrentHTTP(unittest.TestCase):
                     if self.path.endswith('/add') and modern_qbit:
                         return self.reply(json.dumps(dict(success_count=1, failure_count=0,
                                                          pending_count=0, added_torrent_ids=[HASH])).encode())
+                    if self.path.endswith('/delete') and modern_qbit:
+                        return self.reply(b'', code=204)
                     return self.reply(b'Ok.' if self.path.endswith('/add') else b'')
                 if self.headers.get('X-Transmission-Session-Id') != 'fixture-sid':
                     return self.reply(b'', 409, {'X-Transmission-Session-Id': 'fixture-sid'})

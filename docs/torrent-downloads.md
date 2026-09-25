@@ -6,7 +6,7 @@ the managed torrent runner. Deluge and the remaining client catalog are still
 planned; this is not the full Sonarr-client release.
 
 The adapter supports both older `Ok.` login/submission responses and
-qBittorrent 5.2's empty successful login and structured submission responses.
+qBittorrent 5.2's HTTP 204 login/removal and structured submission responses.
 Login endpoint access denial and rejection of a subsequent API session are
 reported separately from an explicit credentials failure.
 

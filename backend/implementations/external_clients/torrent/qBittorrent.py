@@ -33,9 +33,11 @@ class qBittorrent(BaseExternalClient):
                     raise ClientNotWorking(BrokenClientReason.LOGIN_ACCESS_DENIED) from None
                 if reply[0] == 200 and reply[2].strip() == b'Fails.':
                     raise CredentialInvalid
-                # 5.2 returns an empty HTTP 200; older versions return "Ok.".
+                # 5.2 returns HTTP 204 without a body; older versions return "Ok.".
                 # Subsequent API requests must still pass session authentication.
-                if reply[0] != 200 or reply[2].strip() not in (b'Ok.', b''):
+                accepted = ((reply[0] == 200 and reply[2].strip() in (b'Ok.', b''))
+                            or (reply[0] == 204 and not reply[2]))
+                if not accepted:
                     LOGGER.warning(
                         'Unexpected qBittorrent login response (HTTP %s); credentials and response body omitted',
                         reply[0])
@@ -130,6 +132,7 @@ class qBittorrent(BaseExternalClient):
 
     def delete_download(self, download_id, delete_files):
         self._request('POST', 'torrents/delete',
+                      accepted_statuses=(200, 204),
                       data={'hashes': download_id, 'deleteFiles': str(bool(delete_files)).lower()})
 
     def on_shutdown(self):
