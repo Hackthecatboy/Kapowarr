@@ -12,8 +12,9 @@ persistence, remote-path mapping and completed-file import. Torznab is also conn
    test requires this category. Category selection and priority are fixed in
    this slice (`kapowarr`, normal priority).
 2. Mount that completed-download location into Kapowarr. A completed job must
-   resolve to a directory *inside* Kapowarr's configured download folder, not
-   the download folder itself. It must be readable by the container user.
+   resolve to a job directory or supported comic file *inside* Kapowarr's
+   configured download folder, not the download folder itself. SABnzbd can
+   report the comic file directly; only that file is imported in this case. It must be readable by the container user.
 3. If the clients see different paths, add a Remote Path Mapping under Settings
    → Download Clients. For example, map the client's `/completed/` to
    Kapowarr's `/downloads/`. A reported `/completed/Comic/` then resolves to

@@ -227,6 +227,41 @@ class ManagedUsenet(unittest.TestCase):
             with self.assertRaises(JobNeedsReview):
                 self.download.update_status()
 
+    def test_completed_single_comic_path_and_boundaries(self):
+        comic = self.root / 'release.cbz'
+        comic.write_bytes(b'comic')
+        sibling = self.root / 'unrelated.cbz'
+        sibling.write_bytes(b'keep')
+        self.client.get_download.return_value = dict(
+            state=DS.IMPORTING_STATE, storage='/remote/release.cbz',
+            size=5, progress=100, speed=0)
+        with patch('backend.implementations.download_clients.Usenet.RemoteMappings.remote_to_local', return_value=str(comic)):
+            self.download.update_status()
+        self.assertEqual(self.download.files, [str(comic)])
+
+        def scan(volume_id, filepath_filter, **kwargs):
+            self.assertEqual(len(filepath_filter), 1)
+            self.cursor.execute("INSERT INTO issues(id, volume_id, comicvine_id, issue_number, calculated_issue_number) VALUES(1, 1, 1, '1', 1)")
+            self.cursor.execute('INSERT INTO files(id, filepath, size) VALUES(1, ?, 5)', (filepath_filter[0],))
+            self.cursor.execute('INSERT INTO issues_files(file_id, issue_id) VALUES(1, 1)')
+        with patch('backend.features.usenet_downloads.scan_files', side_effect=scan):
+            import_completed(self.download)
+        self.assertEqual(Path(self.download.files[0]).read_bytes(), b'comic')
+        self.assertEqual(comic.read_bytes(), b'comic')
+        self.assertEqual(sibling.read_bytes(), b'keep')
+        self.assertFalse((Path(self.download.files[0]).parent / sibling.name).exists())
+        outside = self.library / 'outside.cbz'
+        outside.write_bytes(b'outside')
+        unsupported = self.root / 'release.txt'
+        unsupported.write_text('unsupported')
+        link = self.root / 'link.cbz'
+        link.symlink_to(comic)
+        for bad in (outside, unsupported, link, self.root / 'missing.cbz'):
+            with self.subTest(path=bad), patch(
+                    'backend.implementations.download_clients.Usenet.RemoteMappings.remote_to_local', return_value=str(bad)):
+                with self.assertRaises(JobNeedsReview):
+                    self.download.update_status()
+
     def test_missing_and_failed_jobs_do_not_disappear_or_resubmit(self):
         for status in (None, dict(state=DS.FAILED_STATE, progress=0, speed=0, size=0)):
             self.client.get_download.return_value = status

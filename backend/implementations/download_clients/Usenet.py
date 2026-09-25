@@ -5,7 +5,7 @@ from threading import Event
 
 from backend.base.custom_exceptions import IssueNotFound
 from backend.base.definitions import (DownloadClientIdentifier, DownloadState,
-                                      DownloadType, ExternalDownload)
+                                      DownloadType, ExternalDownload, FileConstants)
 from backend.implementations.download_client_manager import DownloadClients
 from backend.implementations.download_clients.base import BaseDirectDownload
 from backend.implementations.external_client_manager import ExternalClients
@@ -90,14 +90,18 @@ class UsenetDownload(ExternalDownload, BaseDirectDownload):
             mapped = RemoteMappings.remote_to_local(self.external_client.id, storage)
             root = Path(self.download_folder).resolve()
             path = Path(mapped)
-            # Require an individual job folder under the configured download
+            # Require a job folder or supported comic file under the download
             # root, including after symlink resolution. Never import the root.
             if not path.is_absolute() or path.is_symlink():
-                raise JobNeedsReview('Completed path must be an absolute job folder')
+                raise JobNeedsReview('Completed path must be an absolute job folder or comic file')
             resolved = path.resolve()
-            if root not in resolved.parents or not resolved.is_dir():
+            supported_output = resolved.is_dir() or (
+                resolved.is_file()
+                and resolved.suffix.lower() in FileConstants.SCANNABLE_EXTENSIONS
+            )
+            if root not in resolved.parents or not supported_output:
                 raise JobNeedsReview(
-                    'Completed folder is unavailable or outside the download folder. Check mounts and remote mappings.')
+                    'Completed path is unavailable, unsupported, or outside the download folder. Check mounts and remote mappings.')
             self._files = [str(resolved)]
         self._state = info['state']
 
