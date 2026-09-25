@@ -323,7 +323,38 @@ function autosearchIssue(issue_id, api_key) {
 //
 // Manual search
 //
+function filterManualSearch() {
+	const matchesOnly = document.querySelector('#search-matches-only').checked;
+	const rows = document.querySelectorAll('#search-result-table tbody tr');
+	let visible = 0;
+	rows.forEach(row => {
+		const hidden = matchesOnly && row.dataset.match !== 'true';
+		row.classList.toggle('hidden', hidden);
+		if (!hidden) visible++;
+	});
+	const status = document.querySelector('#search-filter-status');
+	status.textContent = rows.length === 0
+		? 'No results found.'
+		: visible === 0
+			? 'No matching results. Uncheck Matches only to see all results.'
+			: `Showing ${visible} of ${rows.length} results.`;
+	status.classList.remove('hidden');
+}
+
 function showManualSearch(api_key, issue_id=null) {
+	const matchesOnly = document.querySelector('#search-matches-only');
+	const preferenceKey = `kapowarr.search.matchesOnly:${url_base}`;
+	try {
+		matchesOnly.checked = localStorage.getItem(preferenceKey) !== 'false';
+	} catch (_) { /* Keep the current choice when storage is unavailable. */ }
+	matchesOnly.onchange = () => {
+		try {
+			localStorage.setItem(preferenceKey, String(matchesOnly.checked));
+		} catch (_) { /* Filtering still works without browser storage. */ }
+		if (!document.querySelector('#search-result-table').classList.contains('hidden'))
+			filterManualSearch();
+	};
+	document.querySelector('#search-filter-status').classList.add('hidden');
 	// Display searching message
 	const message = document.querySelector('#searching-message');
 	const table = document.querySelector('#search-result-table');
@@ -345,6 +376,7 @@ function showManualSearch(api_key, issue_id=null) {
 		json.result.forEach(result => {
 			const entry = ViewEls.pre_build.manual_search.cloneNode(true);
 			tbody.appendChild(entry);
+			entry.dataset.match = String(result.match === true);
 
 			const match = entry.querySelector('.match-column');
 			if (result.match)
@@ -402,6 +434,7 @@ function showManualSearch(api_key, issue_id=null) {
 		});
 
 		hide([message], [table]);
+		filterManualSearch();
 	});
 };
 
@@ -449,7 +482,8 @@ function blockManualSearch(
 		reason_id: 4
 	})
 	.then(response => {
-        console.log(button, match);
+        match.closest('tr').dataset.match = 'false';
+        filterManualSearch();
 		button.querySelector('img').src = `${url_base}/static/img/check.svg`;
         setImage(
             match,

@@ -204,6 +204,8 @@
 	{{ window(True, "rename-window", "Rename volume files", rename_content, rename_submit) }}
 
 	{% set manual_search_content %}
+		<label class="search-filter"><input type="checkbox" id="search-matches-only" checked> Matches only</label>
+		<p id="search-filter-status" class="hidden" role="status"></p>
 		<p id="searching-message">Searching...</p>
 		<table id="search-result-table" class="icon-text-color">
 			<thead>

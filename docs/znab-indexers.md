@@ -20,6 +20,9 @@ your own indexers, open Settings → Indexers → GetComics, clear Enable and sa
    generic search support; it does not prove the indexer contains comic releases.
 6. Open a library volume and run manual search to check results and matching.
 
+Manual search defaults to **Matches only**, hiding rejected results. Uncheck it
+to inspect all results and rejection reasons. The choice persists in this browser.
+
 Search tracks missing issues separately for each enabled indexer. A match from
 GetComics or another source does not stop other indexers from trying their
 fallback queries. If a known NZB is missing, compare its category with the saved

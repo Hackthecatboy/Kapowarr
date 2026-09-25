@@ -214,6 +214,17 @@ tbody .issue-title:hover {
 	overflow-x: auto;
 }
 
+#manual-search-window .search-filter {
+	display: flex;
+	align-items: center;
+	gap: .5rem;
+}
+
+#manual-search-window .search-filter,
+#search-filter-status {
+	flex: 0 0 auto;
+}
+
 #searching-message {
 	text-align: center;
 }
