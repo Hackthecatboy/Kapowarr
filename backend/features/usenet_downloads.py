@@ -10,7 +10,7 @@ from backend.base.definitions import (Constants, DownloadState as DS,
 from backend.base.logging import LOGGER
 from backend.features.post_processing import PostProcessingContext
 from backend.implementations.file_matching import scan_files
-from backend.implementations.managed_job import JobNeedsReview, save_phase
+from backend.implementations.managed_job import JobNeedsReview, JobPathNeedsReview, save_phase
 from backend.implementations.volumes import Volume
 from backend.internals.db import get_db
 from backend.internals.server import (QueueStatusEvent,
@@ -77,6 +77,19 @@ def run_usenet(handler, download):
     review = False
     while download.state != DS.SHUTDOWN_STATE:
         try:
+            if download.forget_requested.is_set():
+                # Only the local queue row is removed. Never contact the client.
+                PostProcessingContext(download).remove_from_queue()
+                if download in handler.queue:
+                    handler.queue.remove(download)
+                ws.emit(RemovedFromQueueEvent(download))
+                return
+            if download.retry_requested.is_set():
+                download.retry_requested.clear()
+                if review and download.path_review and download.phase == 'submitted' and download.external_id:
+                    review = False
+                    download.path_review = False
+                    download.error = None
             if download.state == DS.CANCELED_STATE:
                 # Explicit user cancellation addresses only the tracked remote job.
                 download.remove_from_client(delete_files=download.phase != 'imported')
@@ -109,6 +122,7 @@ def run_usenet(handler, download):
                     return
                 download.error = None
         except JobNeedsReview as error:
+            download.path_review = isinstance(error, JobPathNeedsReview)
             download.error = str(error)
             review = True
             if download.state not in (DS.CANCELED_STATE, DS.SHUTDOWN_STATE):
@@ -118,6 +132,7 @@ def run_usenet(handler, download):
             # Polling/cleanup can retry. A submission with uncertain outcome
             # re-enters submit_once, which holds it instead of submitting twice.
         except Exception:
+            download.path_review = False
             LOGGER.error(
                 'Usenet job %s needs review after an import or persistence error', download.id)
             download.error = 'Processing failed. Inspect the client and import folder; automatic retry is paused.'

@@ -619,6 +619,25 @@ class DownloadHandler(metaclass=Singleton):
         raise DownloadQueueEntryNotFound(download_id)
 
     # region Removing and stopping
+    def recover(self, download_id: int, action: str) -> None:
+        download = self.get_one(download_id)
+        if not isinstance(download, UsenetDownload):
+            raise InvalidKeyValue('action', action)
+        if action == 'retry' and download.can_retry:
+            download.retry_requested.set()
+        elif action == 'forget' and download.can_forget:
+            download.forget_requested.set()
+        else:
+            raise InvalidKeyValue('action', action)
+        download.sleep_event.set()
+        WebSocket().emit(QueueStatusEvent(download))
+
+    def retry_path_reviews(self, client_id: int) -> None:
+        for download in list(self.queue):
+            if (isinstance(download, UsenetDownload)
+                    and download.external_client.id == client_id and download.can_retry):
+                self.recover(download.id, 'retry')
+
     def remove(self, download_id: int, blocklist: bool = False) -> None:
         """Remove a download entry from the queue.
 

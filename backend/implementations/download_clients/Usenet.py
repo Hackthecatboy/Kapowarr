@@ -9,7 +9,7 @@ from backend.base.definitions import (DownloadClientIdentifier, DownloadState,
 from backend.implementations.download_client_manager import DownloadClients
 from backend.implementations.download_clients.base import BaseDirectDownload
 from backend.implementations.external_client_manager import ExternalClients
-from backend.implementations.managed_job import JobNeedsReview, submit_once
+from backend.implementations.managed_job import JobNeedsReview, JobPathNeedsReview, submit_once
 from backend.implementations.remote_mapping import RemoteMappings
 from backend.implementations.volumes import Volume
 from backend.internals.settings import Settings
@@ -46,6 +46,9 @@ class UsenetDownload(ExternalDownload, BaseDirectDownload):
         self._external_id = None
         self.phase = 'queued'
         self.error = None
+        self.path_review = False
+        self.retry_requested = Event()
+        self.forget_requested = Event()
         self._state = DownloadState.QUEUED_STATE
         self._progress = self._speed = 0.0
         self._size = -1
@@ -86,22 +89,22 @@ class UsenetDownload(ExternalDownload, BaseDirectDownload):
         if info['state'] == DownloadState.IMPORTING_STATE:
             storage = info.get('storage')
             if not isinstance(storage, str) or not storage:
-                raise JobNeedsReview('Completed job has no output path')
+                raise JobPathNeedsReview('Completed job has no output path')
             mapped = RemoteMappings.remote_to_local(self.external_client.id, storage)
             root = Path(self.download_folder).resolve()
             path = Path(mapped)
             # Require a job folder or supported comic file under the download
             # root, including after symlink resolution. Never import the root.
             if not path.is_absolute() or path.is_symlink():
-                raise JobNeedsReview('Completed path must be an absolute job folder or comic file')
+                raise JobPathNeedsReview(f'Completed path must be an absolute, non-symlink job folder or comic file. Client: {storage}; mapped: {mapped}; download folder: {root}')
             resolved = path.resolve()
             supported_output = resolved.is_dir() or (
                 resolved.is_file()
                 and resolved.suffix.lower() in FileConstants.SCANNABLE_EXTENSIONS
             )
             if root not in resolved.parents or not supported_output:
-                raise JobNeedsReview(
-                    'Completed path is unavailable, unsupported, or outside the download folder. Check mounts and remote mappings.')
+                raise JobPathNeedsReview(
+                    f'Completed path is unavailable, unsupported, or outside the download folder. Client: {storage}; mapped: {resolved}; download folder: {root}. Check mounts and remote mappings.')
             self._files = [str(resolved)]
         self._state = info['state']
 
@@ -113,6 +116,20 @@ class UsenetDownload(ExternalDownload, BaseDirectDownload):
         self._state = state
         self._sleep_event.set()
 
+    @property
+    def can_retry(self):
+        return (self.state == DownloadState.PAUSED_STATE and self.path_review
+                and bool(self.external_id) and self.phase == 'submitted'
+                and not self.retry_requested.is_set()
+                and not self.forget_requested.is_set())
+
+    @property
+    def can_forget(self):
+        return (self.state == DownloadState.PAUSED_STATE and bool(self.error)
+                and not self.retry_requested.is_set()
+                and not self.forget_requested.is_set())
+
     def as_dict(self):
         return {**super().as_dict(), 'client': self.external_client.id,
-                'external_id': self.external_id, 'error': self.error}
+                'external_id': self.external_id, 'error': self.error,
+                'can_retry': self.can_retry, 'can_forget': self.can_forget}

@@ -18,7 +18,7 @@ from backend.implementations.download_preppers.usenet.Newznab import \
 from backend.implementations.external_client_manager import ExternalClients
 from backend.implementations.external_clients.usenet.NZBGet import NZBGet
 from backend.implementations.external_clients.usenet.SABnzbd import SABnzbd
-from backend.implementations.managed_job import JobNeedsReview, submit_once
+from backend.implementations.managed_job import JobNeedsReview, JobPathNeedsReview, submit_once
 from backend.implementations.release_store import get_release, remember_release
 from backend.internals.db import (DB_SCHEMA, KapowarrCursor,
                                   setup_db_adapters_and_converters)
@@ -388,6 +388,103 @@ class ManagedUsenet(unittest.TestCase):
             context.return_value.remove_from_queue.assert_not_called()
             self.assertEqual(handler.queue, [self.download])
 
+    def recovery_handler(self):
+        from backend.features.download_queue import DownloadHandler
+        handler = object.__new__(DownloadHandler)
+        handler.queue = [self.download]
+        handler.settings = SimpleNamespace(sv=SimpleNamespace(
+            delete_completed_downloads=False, seeding_handling=None))
+        return handler
+
+    def test_mapping_recovery_reuses_job_and_imports_once(self):
+        handler = self.recovery_handler()
+        self.cursor.execute("UPDATE download_queue SET external_id='existing-job', external_phase='submitted'")
+        job = self.root / 'completed'
+        job.mkdir()
+        self.client.get_download.return_value = dict(
+            state=DS.IMPORTING_STATE, storage='/remote/completed', size=5, progress=100, speed=0)
+        self.download._sleep_event = Mock()
+        with patch('backend.implementations.download_clients.Usenet.RemoteMappings.remote_to_local', return_value=str(self.root / 'missing')) as mapping, \
+                patch('backend.features.usenet_downloads.import_completed') as importer, \
+                patch('backend.features.usenet_downloads.PostProcessingContext') as context, \
+                patch('backend.features.usenet_downloads.WebSocket'), \
+                patch('backend.features.download_queue.WebSocket'):
+            def fix_mapping(*args):
+                self.assertTrue(self.download.can_retry)
+                self.assertIn('mapped:', self.download.error)
+                mapping.return_value = str(job)
+                handler.retry_path_reviews(99)
+                self.assertFalse(self.download.retry_requested.is_set())
+                handler.retry_path_reviews(self.client.id)
+                self.assertTrue(self.download.retry_requested.is_set())
+                self.assertFalse(self.download.can_retry)
+            self.download._sleep_event.wait.side_effect = fix_mapping
+            importer.side_effect = lambda download: setattr(download, 'phase', 'imported')
+            run_usenet(handler, self.download)
+            importer.assert_called_once_with(self.download)
+            context.return_value.add_to_history.assert_called_once()
+            self.assertEqual(handler.queue, [])
+        self.client.add_download.assert_not_called()
+        self.client.delete_download.assert_not_called()
+        self.assertEqual(self.download.external_id, 'existing-job')
+
+    def test_recovery_endpoint_requires_auth_and_validates_action(self):
+        from flask import Flask
+        from frontend.api import api
+        app = Flask(__name__)
+        app.register_blueprint(api, url_prefix='/api')
+        client = app.test_client()
+        with patch('frontend.api.Settings') as settings, \
+                patch('frontend.api.StartTypeHandlers.diffuse_timer'), \
+                patch('frontend.api.DownloadHandler') as handler:
+            settings.return_value.sv.api_key = 'fixture-key'
+            url = '/api/activity/queue/1/recovery'
+            self.assertEqual(client.post(url, json={'action': 'retry'}).status_code, 401)
+            handler.return_value.recover.assert_not_called()
+            self.assertEqual(client.post(url + '?api_key=fixture-key', json={'action': 'unsafe'}).status_code, 400)
+            handler.return_value.recover.assert_not_called()
+            for action in ('retry', 'forget'):
+                self.assertEqual(client.post(url + '?api_key=fixture-key', json={'action': action}).status_code, 200)
+                handler.return_value.recover.assert_called_with(1, action)
+
+    def test_recovery_rejects_partial_imports_and_uncertain_submissions(self):
+        handler = self.recovery_handler()
+        self.download.state = DS.PAUSED_STATE
+        self.download.error = 'Held for review'
+        self.download.path_review = True
+        for phase, external_id in [('importing', 'job'), ('submitting', None), ('queued', None), ('imported', 'job')]:
+            self.download.phase = phase
+            self.download._external_id = external_id
+            with self.subTest(phase=phase), self.assertRaises(InvalidKeyValue):
+                handler.recover(self.download.id, 'retry')
+        self.download.phase = 'submitted'
+        self.download._external_id = 'job'
+        self.download.path_review = False
+        with self.assertRaises(InvalidKeyValue):
+            handler.recover(self.download.id, 'retry')
+        self.assertFalse(self.download.retry_requested.is_set())
+
+    def test_queue_only_removal_never_calls_client_for_either_worker(self):
+        from backend.features.torrent_downloads import run_torrent
+        for worker, module in [(run_usenet, 'usenet_downloads'), (run_torrent, 'torrent_downloads')]:
+            with self.subTest(worker=module):
+                handler = self.recovery_handler()
+                self.download.state = DS.PAUSED_STATE
+                self.download.error = 'Import was interrupted'
+                self.download.phase = 'importing'
+                self.download.forget_requested.clear()
+                with patch('backend.features.download_queue.WebSocket'), \
+                        patch(f'backend.features.{module}.WebSocket'), \
+                        patch(f'backend.features.{module}.PostProcessingContext') as context:
+                    handler.recover(self.download.id, 'forget')
+                    worker(handler, self.download)
+                    context.return_value.remove_from_queue.assert_called_once()
+                    context.return_value.add_to_history.assert_not_called()
+                self.assertEqual(handler.queue, [])
+        self.client.add_download.assert_not_called()
+        self.client.get_download.assert_not_called()
+        self.client.delete_download.assert_not_called()
+
     def test_queue_reload_restores_remote_identity_without_network_submission(self):
         from backend.features.download_queue import DownloadHandler
         handler = object.__new__(DownloadHandler)
@@ -408,7 +505,14 @@ class ManagedUsenet(unittest.TestCase):
     def test_review_reason_is_in_websocket_status_payload(self):
         from backend.internals.server import QueueStatusEvent
         self.download.error = 'Check remote mappings'
-        self.assertEqual(QueueStatusEvent(self.download).get_body()['error'], 'Check remote mappings')
+        self.download.state = DS.PAUSED_STATE
+        self.download.path_review = True
+        self.download.phase = 'submitted'
+        self.download._external_id = 'job'
+        payload = QueueStatusEvent(self.download).get_body()
+        self.assertEqual(payload['error'], 'Check remote mappings')
+        self.assertTrue(payload['can_retry'])
+        self.assertTrue(payload['can_forget'])
 
     def test_queue_is_committed_and_visible_before_worker_starts(self):
         from backend.features.download_queue import DownloadHandler

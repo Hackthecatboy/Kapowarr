@@ -51,8 +51,11 @@ before removing the Kapowarr entry and attempting another download.
 100% downloaded is not completion: repair, extraction, moving and scripts must
 finish. Failed/missing jobs, unavailable output folders and unsupported terminal
 states require review. Credential and connection failures retry polling without
-removing the job. A paused path/mapping error can be retried by correcting the
-configuration and restarting this development instance.
+removing the job. For a pre-import path/mapping error, correct the mapping and save it to trigger
+a recheck, or use **Retry Import** in the queue after fixing the mount. No restart
+or new submission is needed. **Remove from queue only** is available for paused
+review entries and retains the client job and all files. See the
+[queue recovery walkthrough](queue-recovery.md).
 
 Imports copy regular supported media into a unique `Kapowarr-<id>-<job-hash>`
 subfolder in the volume folder, preserve filenames, and use the existing library
@@ -65,7 +68,7 @@ attributing the client's global speed to each job.
 If an import is interrupted, the entry pauses instead of replaying file writes.
 Inspect its library subfolder and client payload; recover or remove partial
 copies and rescan the library as appropriate. There is no automatic import
-rollback or resume button in this slice.
+rollback or retry for partially completed imports.
 
 When Delete Completed Downloads is enabled, client history is removed only
 *after* a successful library import; original completed payloads remain.

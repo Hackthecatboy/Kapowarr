@@ -6,7 +6,7 @@ from backend.base.definitions import (Constants, DownloadState as DS,
 from backend.base.logging import LOGGER
 from backend.features.post_processing import PostProcessingContext
 from backend.features.usenet_downloads import import_completed
-from backend.implementations.managed_job import JobNeedsReview
+from backend.implementations.managed_job import JobNeedsReview, JobPathNeedsReview
 from backend.internals.server import (QueueStatusEvent,
                                       RemovedFromQueueEvent, WebSocket)
 
@@ -16,6 +16,19 @@ def run_torrent(handler, download):
     started, review = False, False
     while download.state != DS.SHUTDOWN_STATE:
         try:
+            if download.forget_requested.is_set():
+                # Only the local queue row is removed. Never contact the client.
+                PostProcessingContext(download).remove_from_queue()
+                if download in handler.queue:
+                    handler.queue.remove(download)
+                ws.emit(RemovedFromQueueEvent(download))
+                return
+            if download.retry_requested.is_set():
+                download.retry_requested.clear()
+                if review and download.path_review and download.phase == 'submitted' and download.external_id:
+                    review = False
+                    download.path_review = False
+                    download.error = None
             if download.state == DS.CANCELED_STATE:
                 download.cancel_remote()
                 PostProcessingContext(download).remove_from_queue()
@@ -45,12 +58,14 @@ def run_torrent(handler, download):
                     return
                 download.error = None
         except JobNeedsReview as error:
+            download.path_review = isinstance(error, JobPathNeedsReview)
             download.error, review = str(error), True
             if download.state not in (DS.CANCELED_STATE, DS.SHUTDOWN_STATE):
                 download.state = DS.PAUSED_STATE
         except (ClientNotWorking, CredentialInvalid):
             download.error = 'Client connection failed. Check credentials and availability.'
         except Exception:
+            download.path_review = False
             LOGGER.error(
                 'Torrent job %s needs review after a processing error', download.id)
             download.error, review = 'Processing failed. Inspect the client and library copy; automatic retry is paused.', True

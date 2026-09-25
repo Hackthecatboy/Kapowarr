@@ -27,13 +27,17 @@ fork. The milestones below are priorities, not a claim of feature parity.
 
 ## Next milestones, in priority order
 
-### 1. Queue recovery — next implementation slice
+### 1. Queue recovery — implemented; NAS validation next
 
-- [ ] Add Retry Import for recoverable failures, without resubmitting downloads.
-- [ ] Recheck paths after a remote mapping changes, without requiring a restart.
-- [ ] Explain the client-reported path, mapped path and failed check clearly.
-- [ ] Allow removal from Kapowarr's queue while retaining client jobs and files.
-- [ ] Distinguish safe retries from interrupted/partial imports that need review.
+- [x] Add Retry Import for recoverable failures, without resubmitting downloads.
+- [x] Recheck paths after a remote mapping changes, without requiring a restart.
+- [x] Explain the client-reported path, mapped path and failed check clearly.
+- [x] Allow removal of paused review entries from Kapowarr's queue while retaining client jobs and files.
+- [x] Distinguish safe retries from interrupted/partial imports that need review.
+
+Implemented with regression checks; live NAS recovery validation remains pending.
+Follow the [queue recovery test](docs/queue-recovery.md). Retry is limited to
+pre-import path failures; torrent ownership failures still require manual review.
 
 Acceptance: correct a bad mapping and import the same tracked job without a
 restart, duplicate download or duplicate library copy. Never automatically replay

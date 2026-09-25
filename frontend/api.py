@@ -49,6 +49,7 @@ from backend.implementations.naming import (generate_volume_folder_name,
 from backend.implementations.remote_mapping import RemoteMappings
 from backend.implementations.root_folders import RootFolders
 from backend.implementations.volumes import Library, delete_issue_file
+from backend.internals.db import get_db
 from backend.internals.db_backup_import import (create_database_copy,
                                                 get_backup, get_backups,
                                                 import_db, import_db_backup)
@@ -726,6 +727,8 @@ def api_remote_mappings():
             remote_path,
             local_path
         ).get()
+        get_db().connection.commit()
+        DownloadHandler().retry_path_reviews(external_download_client_id)
         return return_api(result, code=201)
 
 
@@ -780,6 +783,8 @@ def api_remote_mapping(id: int):
             remote_path,
             local_path
         )
+        get_db().connection.commit()
+        DownloadHandler().retry_path_reviews(remote_mapping.get()['external_download_client_id'])
         return return_api(result, code=201)
 
     elif request.method == 'DELETE':
@@ -1361,6 +1366,20 @@ def api_delete_download(download_id: int):
 
         download_handler.remove(download_id, blocklist)
         return return_api({})
+
+
+@api.route('/activity/queue/<int:download_id>/recovery', methods=['POST'])
+@error_handler
+@auth
+def api_queue_recovery(download_id: int):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise InvalidKeyValue('action', None)
+    action = data.get('action')
+    if action not in ('retry', 'forget'):
+        raise InvalidKeyValue('action', action)
+    DownloadHandler().recover(download_id, action)
+    return return_api({})
 
 
 @api.route('/activity/history', methods=['GET', 'DELETE'])

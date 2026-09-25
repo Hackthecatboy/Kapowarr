@@ -72,3 +72,16 @@ th, td {
         width: calc(100vw - var(--nav-width));
     }
 }
+
+.option-column .recovery-action {
+    padding: .4rem .6rem;
+    margin-bottom: .4rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    white-space: nowrap;
+    color: var(--text-color);
+}
+
+.recovery-error {
+    display: block;
+}

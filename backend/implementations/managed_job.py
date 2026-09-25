@@ -7,6 +7,10 @@ class JobNeedsReview(Exception):
     """No automatic retry is safe at this boundary."""
 
 
+class JobPathNeedsReview(JobNeedsReview):
+    """A pre-import path check may be retried against the existing client job."""
+
+
 def submit_once(download):
     cursor = get_db()
     row = cursor.execute('SELECT external_id, external_phase FROM download_queue WHERE id = ?',

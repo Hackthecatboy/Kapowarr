@@ -7,7 +7,8 @@ of September 25, 2026. Full torrent import/seeding validation and the remaining
 client catalog are still pending.
 
 See [ROADMAP.md](ROADMAP.md) for current priorities and acceptance criteria.
-Queue recovery is the next planned slice. Checkpoints below are historical;
+Queue recovery controls are implemented and awaiting the isolated NAS walkthrough
+in [docs/queue-recovery.md](docs/queue-recovery.md). Checkpoints below are historical;
 the roadmap distinguishes current implementation from live verification.
 
 ## GHCR setup checkpoint (September 24, 2026)

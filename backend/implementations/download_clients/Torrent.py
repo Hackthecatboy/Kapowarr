@@ -7,7 +7,7 @@ from backend.base.definitions import (DownloadClientIdentifier,
                                       DownloadState as DS, DownloadType)
 from backend.implementations.download_client_manager import DownloadClients
 from backend.implementations.download_clients.Usenet import UsenetDownload
-from backend.implementations.managed_job import JobNeedsReview, submit_once
+from backend.implementations.managed_job import JobNeedsReview, JobPathNeedsReview, submit_once
 from backend.implementations.remote_mapping import RemoteMappings
 from backend.implementations.torrent_support import resolve_torrent
 from backend.internals.db import get_db
@@ -84,12 +84,12 @@ class TorrentDownload(UsenetDownload):
         if info['state'] in (DS.IMPORTING_STATE, DS.SEEDING_STATE):
             storage = info.get('storage')
             if not isinstance(storage, str) or not storage:
-                raise JobNeedsReview('Client did not report a completed content path')
+                raise JobPathNeedsReview('Client did not report a completed content path')
             local = Path(RemoteMappings.remote_to_local(
                 self.external_client.id, storage))
             if not local.is_absolute() or local.is_symlink() or not local.exists() or self.target_folder.resolve() not in local.resolve().parents:
-                raise JobNeedsReview(
-                    'Completed content is unavailable or outside its job folder. Check mounts and mappings.')
+                raise JobPathNeedsReview(
+                    f'Completed content is unavailable or outside its job folder. Client: {storage}; mapped: {local}; job folder: {self.target_folder}. Check mounts and mappings.')
             self._files = [str(local.resolve())]
         self._state = info['state']
 

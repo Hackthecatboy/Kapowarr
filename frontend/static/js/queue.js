@@ -42,11 +42,19 @@ function addQueueEntry(api_key, obj) {
         blocklist=true
     );
 
+    entry.querySelector('.retry-import-dl').onclick = () => recoverEntry(obj.id, api_key, 'retry', entry);
+    entry.querySelector('.forget-dl').onclick = () => {
+        if (confirm('Remove this entry from Kapowarr only? The client job and all files will be kept.'))
+            recoverEntry(obj.id, api_key, 'forget', entry);
+    };
 	updateQueueEntry(obj);
 };
 
 function updateQueueEntry(obj) {
 	const tr = document.querySelector(`#queue > tr[data-id="${obj.id}"]`);
+    if (!tr) return;
+    tr.querySelector('.retry-import-dl').classList.toggle('hidden', !obj.can_retry);
+    tr.querySelector('.forget-dl').classList.toggle('hidden', !obj.can_forget);
 	tr.dataset.status = obj.status;
 	tr.querySelector('td:nth-child(1)').innerText =
 		obj.status.charAt(0).toUpperCase() + obj.status.slice(1) + (obj.error ? `: ${obj.error}` : '');
@@ -75,6 +83,22 @@ function fillQueue(api_key) {
 //
 // Actions
 //
+async function recoverEntry(id, api_key, action, entry) {
+    const buttons = entry.querySelectorAll('.recovery-action');
+    const error = entry.querySelector('.recovery-error');
+    error.textContent = '';
+    buttons.forEach(button => button.disabled = true);
+    try {
+        const response = await sendAPI('POST', `/activity/queue/${id}/recovery`, api_key, {}, {action});
+        if (!response.ok) throw new Error('Recovery rejected');
+        fillQueue(api_key);
+    } catch (_) {
+        error.textContent = 'Recovery could not be started. Refresh the queue and check its status.';
+    } finally {
+        buttons.forEach(button => button.disabled = false);
+    }
+}
+
 function deleteAll(api_key) {
    sendAPI('DELETE', '/activity/queue', api_key);
 };
