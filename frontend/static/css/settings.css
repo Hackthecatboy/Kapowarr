@@ -479,3 +479,16 @@
 #pref-table th {
 	width: 2rem;
 }
+
+/* Keep download clients and mappings in one naturally sized scrolling page. */
+#download-clients-page .settings-container h2:not(:first-of-type) {
+	margin-top: 2rem;
+}
+
+#download-clients-page .settings-container > p {
+	margin-bottom: 1rem;
+}
+
+#download-clients-page #add-remote-mapping {
+	min-height: 2.5rem;
+}

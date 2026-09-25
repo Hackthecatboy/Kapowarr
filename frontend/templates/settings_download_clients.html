@@ -304,7 +304,7 @@
 {% endblock windows %}
 
 {% block main %}
-<main>
+<main id="download-clients-page">
 	<div class="settings-container">
 		<h2>Built-in Clients</h2>
 		<div id="builtin-client-list" class="client-list">
@@ -321,6 +321,16 @@
 				<img src="{{url_base}}/static/img/cancel.svg" alt="">
 			</button>
 		</div>
+        <h2>Usenet Clients</h2>
+        <p>Create a category named <strong>kapowarr</strong> in SABnzbd or NZBGet before testing.
+        Configure it to repair and unpack into individual job folders under Kapowarr's download folder.
+        Use Remote Path Mapping below if the container paths differ. Completed files are copied into the library;
+        originals remain in the client. This development slice preserves filenames.</p>
+        <div id="usenet-client-list" class="client-list">
+            <button id="add-usenet-client" class="add-button icon-text-color" title="Add Usenet client">
+                <img src="{{url_base}}/static/img/cancel.svg" alt="">
+            </button>
+        </div>
 		<h2>Remote Path Mappings</h2>
 		<button id="add-remote-mapping" class="icon-dark-color" title="Add remote path mapping">
 			<img src="{{url_base}}/static/img/cancel.svg" alt="">
@@ -344,17 +354,6 @@
 			</table>
 		</div>
 	</div>
-    <div class="settings-container">
-        <h2>Usenet Clients</h2>
-        <p>Create a category named <strong>kapowarr</strong> in SABnzbd or NZBGet before testing.
-        Configure it to repair and unpack into individual job folders under Kapowarr's download folder.
-        Use Remote Path Mapping below if the container paths differ. Completed files are copied into the library;
-        originals remain in the client. This development slice preserves filenames.</p>
-        <div id="usenet-client-list" class="client-list">
-            <button id="add-usenet-client" class="add-button icon-text-color" title="Add Usenet client">
-                <img src="{{url_base}}/static/img/cancel.svg" alt="">
-            </button>
-        </div>
-    </div>
+
 </main>
 {% endblock main %}
