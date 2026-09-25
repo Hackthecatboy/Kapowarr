@@ -1,10 +1,10 @@
 const brokenClientReasonMap = {
-    connection_error: "Failed to connect",
-    not_client_instance: "What was connected to was not the expected client",
+    connection_error: "Could not connect to the indexer. Check its URL, HTTP/HTTPS scheme, and whether it is reachable from Kapowarr.",
+    not_client_instance: "The URL did not respond as the selected indexer type. Check the indexer API URL.",
     version_not_supported: "The version is not supported",
     failed_processing_response: "Got an unexpected response back",
-    access_denied: "Access denied by client but not because of invalid credentials",
-	invalid_credentials: "Failed to login with the given credentials"
+    access_denied: "The indexer denied access to this request.",
+	invalid_credentials: "The indexer rejected the supplied credentials. Check the API key."
 }
 
 function addZnabFields(form, prefix, options, values = {}) {
@@ -38,7 +38,7 @@ function addZnabFields(form, prefix, options, values = {}) {
 	const row = document.createElement('tr');
 	const cell = document.createElement('td');
 	cell.colSpan = 2;
-	cell.innerText = 'Enter the full Newznab/Torznab API URL (including the per-indexer path from Prowlarr). Downloads require a configured client for this protocol and shared download folders.';
+	cell.innerText = 'Paste the full Torznab or Newznab API URL for one indexer. In Prowlarr, copy that indexer\'s Torznab/Newznab URL, including its indexer ID and /api path (for example, http://prowlarr:9696/1/api). Use the address reachable from Kapowarr and the actual indexer ID. Prowlarr\'s home page address alone will not work. Enter the API key separately above.';
 	row.appendChild(cell);
 	form.appendChild(row);
 }

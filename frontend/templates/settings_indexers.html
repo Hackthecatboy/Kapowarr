@@ -34,7 +34,7 @@
 					</td>
 				</tr>
 				<tr>
-					<th><label for="add-url-input">URL</label></th>
+					<th><label for="add-url-input">Indexer URL</label></th>
 					<td>
 						<input type="text" id="add-url-input" required>
 					</td>
@@ -71,7 +71,7 @@
 					</td>
 				</tr>
 				<tr>
-					<th><label for="edit-url-input">URL</label></th>
+					<th><label for="edit-url-input">Indexer URL</label></th>
 					<td>
 						<input type="text" id="edit-url-input" required>
 					</td>
@@ -90,23 +90,24 @@
 		<button id="submit-indexer-edit" type="submit" form="edit-indexer-form">Save</button>
 	{% endset %}
 
-	{{ window(False, "edit-indexer-window", "Edit Indexer Client", edit_content, edit_submit) }}
+	{{ window(False, "edit-indexer-window", "Edit Indexer", edit_content, edit_submit) }}
 {% endblock windows %}
 
 {% block main %}
 <main>
 	<div class="settings-container">
-		<h2>DDL</h2>
+		<h2>Direct Download Indexers</h2>
 		<div id="ddl-indexer-list" class="client-list">
 			<button id="add-ddl-indexer" class="add-button icon-text-color" title="Add DDL indexer">
 				<img src="{{url_base}}/static/img/cancel.svg" alt="">
 			</button>
 		</div>
 	</div>
-	{% for kind, title in [('torrent', 'Torrents'), ('usenet', 'Usenet')] %}
+	{% for kind, title in [('torrent', 'Torrent Indexers'), ('usenet', 'Usenet Indexers')] %}
 	<div class="settings-container">
 		<h2>{{ title }}</h2>
-		{% if kind == 'torrent' %}<p>Downloads require qBittorrent or Transmission and shared download folders.</p>{% else %}<p>Downloads require a configured SABnzbd or NZBGet client and shared download folders.</p>{% endif %}
+		{% if kind == 'torrent' %}<p>Add a Torznab indexer to search for torrents. For Prowlarr, use the API URL for an individual torrent indexer.</p>{% else %}<p>Add a Newznab indexer to search for Usenet releases. For Prowlarr, use the API URL for an individual Usenet indexer.</p>{% endif %}
+		<p>Configure the application that downloads releases under Download Clients.</p>
 		<div id="{{ kind }}-indexer-list" class="client-list">
 			<button class="add-button icon-text-color" title="Add {{ kind }} indexer">
 				<img src="{{url_base}}/static/img/cancel.svg" alt="">
