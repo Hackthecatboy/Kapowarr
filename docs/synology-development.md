@@ -1,5 +1,8 @@
 # Run the fork on Synology using local builds
 
+For ready-built private GitHub images and a Container Manager project, follow
+[the GHCR setup guide](synology-ghcr.md). This page covers the alternative local build.
+
 This setup pulls `Hackthecatboy/Kapowarr` from GitHub, builds an image on the
 NAS, and runs it using Docker Compose through Container Manager's Docker
 engine. It does not publish images. Building still downloads base images and

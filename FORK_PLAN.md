@@ -4,6 +4,17 @@ Status: Newznab and Torznab search/download routing are implemented. SABnzbd,
 NZBGet, qBittorrent and Transmission have managed job tracking and copy import.
 The full client catalog and live client/NAS verification remain pending.
 
+## GHCR setup checkpoint (September 24, 2026)
+
+- Added a branch-triggered GitHub Actions workflow that runs tests and builds
+  the AMD64 Synology image, with `dev` and full commit SHA tags in GHCR.
+- Added `compose.synology.ghcr.yml` and a private-image authentication/project
+  walkthrough in [docs/synology-ghcr.md](docs/synology-ghcr.md).
+- The local source-build Compose file and update script remain available.
+- Local validation: 104 tests pass, Compose configuration resolves, workflow
+  YAML and embedded Python validate. GitHub build and NAS runtime validation
+  still need completion; enable fork Actions if disabled.
+
 ## Torrent checkpoint (September 21, 2026)
 
 - Connected Torznab release metadata to comic matching and torrent preparation;
