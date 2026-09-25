@@ -1,5 +1,7 @@
 # Torznab and torrent downloads in the development fork
 
+Current priorities and verification status: [development roadmap](../ROADMAP.md).
+
 Torznab now supports manual downloads, automatic search and RSS through
 **qBittorrent 4.3.9+** or **Transmission 4.1+**. GetComics torrent links also use
 the managed torrent runner. Deluge and the remaining client catalog are still

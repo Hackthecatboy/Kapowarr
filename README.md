@@ -7,7 +7,7 @@
 > personal testing, with no promise of stability or support.
 >
 > Development takes place on `feature/sonarr-integrations`. See the
-> [fork plan](FORK_PLAN.md) and [Synology test setup](docs/synology-ghcr.md).
+> [roadmap](ROADMAP.md), [fork plan](FORK_PLAN.md), and [Synology test setup](docs/synology-ghcr.md).
 > Please keep fork-specific issues in this repository rather than directing
 > them to upstream support. The original project information follows below.
 

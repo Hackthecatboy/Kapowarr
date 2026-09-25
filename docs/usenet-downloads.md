@@ -1,5 +1,7 @@
 # Usenet downloads in the development fork
 
+Current priorities and verification status: [development roadmap](../ROADMAP.md).
+
 This slice connects Newznab search results to SABnzbd and NZBGet. Both clients
 have settings, connection tests, URL submission, queue/history polling, job-ID
 persistence, remote-path mapping and completed-file import. Torznab is also connected through the separate

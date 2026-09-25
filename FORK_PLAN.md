@@ -2,7 +2,13 @@
 
 Status: Newznab and Torznab search/download routing are implemented. SABnzbd,
 NZBGet, qBittorrent and Transmission have managed job tracking and copy import.
-The full client catalog and live client/NAS verification remain pending.
+The Synology Prowlarr → SABnzbd → library import workflow is user-verified as
+of September 25, 2026. Full torrent import/seeding validation and the remaining
+client catalog are still pending.
+
+See [ROADMAP.md](ROADMAP.md) for current priorities and acceptance criteria.
+Queue recovery is the next planned slice. Checkpoints below are historical;
+the roadmap distinguishes current implementation from live verification.
 
 ## GHCR setup checkpoint (September 24, 2026)
 
