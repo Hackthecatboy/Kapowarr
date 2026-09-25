@@ -3,14 +3,46 @@ const logStatus = document.querySelector('#logs-status');
 const logFilter = document.querySelector('#filter-logs');
 const logRefresh = document.querySelector('#refresh-logs');
 const logDownload = document.querySelector('#download-logs');
+const logAutoRefresh = document.querySelector('#auto-refresh-logs');
+const logLevelFilter = document.querySelector('#filter-log-level');
+const recordLogLevel = document.querySelector('#record-log-level');
+const recordLogStatus = document.querySelector('#record-log-status');
+const logPreferenceKey = `kapowarr.logs:${typeof url_base === 'string' ? url_base : ''}`;
 let logText = '';
 let logsLoading = false;
 
+try {
+    const preferences = JSON.parse(localStorage.getItem(logPreferenceKey) || '{}');
+    logAutoRefresh.checked = preferences.autoRefresh === true;
+    if (Array.from(logLevelFilter.options).some(option => option.value === preferences.level)) {
+        logLevelFilter.value = preferences.level;
+    }
+    if (typeof preferences.filter === 'string') logFilter.value = preferences.filter;
+} catch (_) { /* Storage may be unavailable or contain an older value. */ }
+
+function saveLogPreferences() {
+    try {
+        localStorage.setItem(logPreferenceKey, JSON.stringify({
+            autoRefresh: logAutoRefresh.checked, level: logLevelFilter.value, filter: logFilter.value
+        }));
+    } catch (_) { /* The viewer also works without browser storage. */ }
+}
+
 function renderLogs() {
     const term = logFilter.value.toLowerCase();
-    const text = logText.split('\n').filter(line => line.toLowerCase().includes(term)).join('\n');
+    // Keep multiline tracebacks with their parent record when filtering.
+    const records = [];
+    for (const line of logText.split('\n')) {
+        const match = line.match(/^\d{4}-\d\d-\d\dT.*? \| .*? \| .*? \| .*? \| (DEBUG|INFO|WARNING|ERROR|CRITICAL) \| /);
+        if (match || !records.length) records.push({level: match?.[1], lines: [line]});
+        else records[records.length - 1].lines.push(line);
+    }
+    const text = records.filter(record =>
+        (logLevelFilter.value === 'ALL' || record.level === logLevelFilter.value) &&
+        record.lines.join('\n').toLowerCase().includes(term)
+    ).map(record => record.lines.join('\n')).join('\n');
     const atBottom = logOutput.scrollHeight - logOutput.scrollTop - logOutput.clientHeight < 30;
-    logOutput.textContent = text || (term ? 'No matching lines in the loaded logs.' : 'No log entries yet.');
+    logOutput.textContent = text || (term || logLevelFilter.value !== 'ALL' ? 'No matching entries in the loaded logs.' : 'No log entries yet.');
     if (atBottom) logOutput.scrollTop = logOutput.scrollHeight;
 }
 
@@ -32,8 +64,34 @@ async function refreshLogs(apiKey) {
     }
 }
 
-logFilter.addEventListener('input', renderLogs);
+logFilter.addEventListener('input', () => { saveLogPreferences(); renderLogs(); });
+logLevelFilter.addEventListener('change', () => { saveLogPreferences(); renderLogs(); });
+logAutoRefresh.addEventListener('change', saveLogPreferences);
 usingApiKey().then(apiKey => {
+    let savedRecordLevel;
+    fetchAPI('/settings', apiKey).then(json => {
+        savedRecordLevel = String(json.result.log_level);
+        recordLogLevel.value = savedRecordLevel;
+        recordLogLevel.disabled = false;
+        recordLogStatus.textContent = 'Applies to new entries; saved for this server.';
+    }).catch(() => {
+        recordLogStatus.textContent = 'Could not load log level. Reload this page to retry.';
+    });
+    recordLogLevel.onchange = async () => {
+        recordLogLevel.disabled = true;
+        try {
+            const response = await sendAPI('PUT', '/settings', apiKey, {}, {log_level: Number(recordLogLevel.value)});
+            if (!response.ok) throw new Error('Save failed');
+            savedRecordLevel = recordLogLevel.value;
+            recordLogStatus.textContent = 'Saved. Repeat the action to capture new entries.';
+            await refreshLogs(apiKey);
+        } catch (_) {
+            recordLogLevel.value = savedRecordLevel;
+            recordLogStatus.textContent = 'Could not save log level. Previous setting restored.';
+        } finally {
+            recordLogLevel.disabled = false;
+        }
+    };
     logRefresh.onclick = () => refreshLogs(apiKey);
     logDownload.onclick = async () => {
         logDownload.disabled = true;
@@ -56,7 +114,7 @@ usingApiKey().then(apiKey => {
     };
     refreshLogs(apiKey);
     const timer = setInterval(() => {
-        if (!document.hidden && document.querySelector('#auto-refresh-logs').checked) refreshLogs(apiKey);
+        if (!document.hidden && logAutoRefresh.checked) refreshLogs(apiKey);
     }, 5000);
     window.addEventListener('pagehide', () => clearInterval(timer), {once: true});
 });

@@ -10,13 +10,28 @@
 <main id="logs-page">
     <h2>Logs</h2>
     <p>Recent Kapowarr logs, oldest to newest. Download logs for the full retained history.</p>
-    <p>For search query details, set Log Level to Debug in
-        <a href="{{url_base}}/settings/general">Settings → General</a>, reproduce the problem,
-        then refresh here. Return to Info when finished.</p>
+    <div class="logs-toolbar">
+        <label for="record-log-level">Record logs</label>
+        <select id="record-log-level" disabled>
+            <option value="20">Info</option>
+            <option value="10">Debug</option>
+        </select>
+        <span id="record-log-status" role="status">Loading log level…</span>
+    </div>
+    <p>Choose Debug to record search details, then repeat the search. Return to Info when finished.</p>
     <div class="logs-toolbar">
         <button id="refresh-logs" type="button">Refresh</button>
         <button id="download-logs" type="button">Download Logs</button>
         <label><input id="auto-refresh-logs" type="checkbox"> Auto-refresh every 5 seconds</label>
+        <label for="filter-log-level">Show</label>
+        <select id="filter-log-level">
+            <option value="ALL">All levels</option>
+            <option value="DEBUG">Debug</option>
+            <option value="INFO">Info</option>
+            <option value="WARNING">Warning</option>
+            <option value="ERROR">Error</option>
+            <option value="CRITICAL">Critical</option>
+        </select>
         <label for="filter-logs">Filter text</label>
         <input id="filter-logs" type="search" placeholder="Search displayed lines">
     </div>
