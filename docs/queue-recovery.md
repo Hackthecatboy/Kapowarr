@@ -1,7 +1,7 @@
 # Queue recovery and Synology test
 
-Implemented for managed Usenet and torrent jobs. Live NAS recovery validation is
-pending; use the isolated development project for these checks.
+Implemented for managed Usenet and torrent jobs. The user confirmed the recovery walkthrough working on Synology. Use the
+isolated development project when repeating these checks.
 
 ## What the controls do
 

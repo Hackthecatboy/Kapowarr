@@ -13,7 +13,8 @@ fork. The milestones below are priorities, not a claim of feature parity.
   → SABnzbd download → remote path mapping → library import. The user confirmed
   this working after the single-file completion fix (`122f815`).
 - Prowlarr Torznab results and qBittorrent connectivity have been exercised on
-  the NAS. A complete torrent import with continued seeding is still unverified.
+  the NAS. A complete torrent import with continued seeding is still unverified; the user
+  reports testing is blocked by a Prowlarr/Bitmag issue.
 - SABnzbd, NZBGet, qBittorrent and Transmission adapters are implemented;
   NZBGet and Transmission still need live validation.
 - Newznab/Torznab manual search, automatic search and RSS routing are implemented.
@@ -27,7 +28,7 @@ fork. The milestones below are priorities, not a claim of feature parity.
 
 ## Next milestones, in priority order
 
-### 1. Queue recovery — implemented; NAS validation next
+### 1. Queue recovery — user-verified on Synology
 
 - [x] Add Retry Import for recoverable failures, without resubmitting downloads.
 - [x] Recheck paths after a remote mapping changes, without requiring a restart.
@@ -35,7 +36,8 @@ fork. The milestones below are priorities, not a claim of feature parity.
 - [x] Allow removal of paused review entries from Kapowarr's queue while retaining client jobs and files.
 - [x] Distinguish safe retries from interrupted/partial imports that need review.
 
-Implemented with regression checks; live NAS recovery validation remains pending.
+Implemented with regression checks. The user confirmed the recovery walkthrough
+working on Synology.
 Follow the [queue recovery test](docs/queue-recovery.md). Retry is limited to
 pre-import path failures; torrent ownership failures still require manual review.
 
@@ -43,7 +45,7 @@ Acceptance: correct a bad mapping and import the same tracked job without a
 restart, duplicate download or duplicate library copy. Never automatically replay
 an uncertain submission or partially completed import.
 
-### 2. Verify the torrent workflow on Synology
+### 2. Verify the torrent workflow on Synology — blocked
 
 - [ ] Download a matching release through Prowlarr and qBittorrent.
 - [ ] Verify library import while the original continues seeding.
@@ -53,12 +55,17 @@ an uncertain submission or partially completed import.
 Acceptance: imported comic matches the library issue, original torrent data is
 unchanged, and restarting does not submit or import it again.
 
-### 3. Prowlarr synchronization
+### 3. Prowlarr synchronization — implemented; NAS validation next
 
-- [ ] Import indexers from a Prowlarr address and API key.
-- [ ] Update imported indexers without duplicates or overwriting unrelated entries.
-- [ ] Define category, enable/disable and removed-indexer behavior.
-- [ ] Keep manual Newznab/Torznab setup available.
+- [x] Import selected indexers from a Prowlarr address and API key.
+- [x] Update imported indexers without duplicates or overwriting unrelated entries.
+- [x] Define category, enable/disable and removed-indexer behavior.
+- [x] Keep manual Newznab/Torznab setup available.
+
+One saved connection, read-only preview, selected import and manual refresh are
+implemented. See [the setup and validation guide](docs/prowlarr-sync.md).
+Scheduled refresh, multiple connections and adopting manual entries remain future
+extensions.
 
 Native registration in Prowlarr's Applications menu is a separate integration
 question; importing its indexers does not establish that support.

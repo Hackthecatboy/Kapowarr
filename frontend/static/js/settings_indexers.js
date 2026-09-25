@@ -420,7 +420,7 @@ const typeToList = {
 
 function loadIndexers(apiKey) {
 	Object.values(typeToList).forEach(
-		l => l.querySelectorAll(":not(:first-child)").forEach(el => el.remove())
+		l => l.querySelectorAll(":scope > button:not(:first-child)").forEach(el => el.remove())
 	);
 	
 	fetchAPI('/indexers', apiKey)
@@ -434,11 +434,110 @@ function loadIndexers(apiKey) {
 	});
 };
 
+function setupProwlarr(apiKey) {
+    const form = document.querySelector('#prowlarr-form');
+    const url = document.querySelector('#prowlarr-url');
+    const key = document.querySelector('#prowlarr-key');
+    const categories = document.querySelector('#prowlarr-categories');
+    const status = document.querySelector('#prowlarr-status');
+    const list = document.querySelector('#prowlarr-list');
+    const previewButton = document.querySelector('#prowlarr-preview');
+    const syncButton = document.querySelector('#prowlarr-sync');
+    let previewReady = false;
+    let busy = false;
+    const payload = () => ({url: url.value.trim(), api_token: key.value,
+        categories: categories.value.trim() ? categories.value.split(',').map(v => Number(v.trim())) : []});
+    const setBusy = value => {
+        busy = value;
+        form.querySelectorAll('input').forEach(input => input.disabled = value);
+        list.querySelectorAll('input').forEach(input => input.disabled = value || input.dataset.unavailable === 'true');
+        previewButton.disabled = value;
+        syncButton.disabled = value || !previewReady;
+    };
+    form.oninput = () => {
+        previewReady = false;
+        syncButton.disabled = true;
+        list.replaceChildren();
+    };
+    async function showError(response) {
+        let message = 'Could not reach Prowlarr. Check its address and try again.';
+        try {
+            const error = await response.json();
+            if (error.error === 'CredentialInvalid') message = 'Prowlarr rejected the API key.';
+            else if (error.error === 'InvalidKeyValue') message = String(error.result.value);
+            else if (error.result?.reason) message = brokenClientReasonMap[error.result.reason] || message;
+        } catch (_) { /* Keep a useful fallback for network failures. */ }
+        status.textContent = message;
+        status.classList.add('error');
+    }
+    async function loadConfig() {
+        const json = await fetchAPI('/prowlarr', apiKey);
+        url.value = json.result.url;
+        categories.value = json.result.categories.join(', ');
+        key.value = '';
+        document.querySelector('#prowlarr-key-help').textContent = json.result.has_api_key
+            ? 'API key saved. Leave blank to keep it, or enter a replacement.'
+            : 'Enter the API key from Prowlarr Settings → General.';
+    }
+    async function preview() {
+        const response = await sendAPI('POST', '/prowlarr/preview', apiKey, {}, payload());
+        const json = await response.json();
+        list.replaceChildren();
+        for (const entry of json.result) {
+            const label = document.createElement('label');
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = entry.id;
+            input.dataset.unavailable = String(entry.duplicate || !entry.supported);
+            input.checked = entry.managed && !entry.duplicate && entry.supported;
+            label.append(input, document.createTextNode(` ${entry.name} (${entry.protocol}) — ${
+                entry.duplicate ? 'manual entry already exists; skipped' : !entry.supported ? 'unsupported' : entry.managed ? 'managed' : 'new'
+            }${entry.enabled ? '' : '; disabled in Prowlarr'}`));
+            list.appendChild(label);
+        }
+        previewReady = true;
+        return json.result.length;
+    }
+    form.onsubmit = async event => {
+        event.preventDefault();
+        if (busy || !form.reportValidity()) return;
+        setBusy(true);
+        previewReady = false;
+        status.classList.remove('error');
+        status.textContent = 'Loading Prowlarr indexers…';
+        try {
+            const count = await preview();
+            status.textContent = count ? 'Select new indexers to import. Managed entries are selected for refresh.' : 'No indexers returned. Refresh will disable any previously managed entries.';
+        } catch (error) { await showError(error); }
+        finally { setBusy(false); }
+    };
+    syncButton.onclick = async () => {
+        if (busy || !previewReady) return;
+        const data = {...payload(), ids: [...list.querySelectorAll('input:checked')].map(input => Number(input.value))};
+        setBusy(true);
+        status.classList.remove('error');
+        status.textContent = 'Importing and refreshing…';
+        try {
+            const response = await sendAPI('POST', '/prowlarr/sync', apiKey, {}, data);
+            const result = (await response.json()).result;
+            status.textContent = `Created ${result.created}, updated ${result.updated}, disabled ${result.disabled}, skipped ${result.skipped}.`;
+            previewReady = false;
+            list.replaceChildren();
+            await loadConfig();
+            loadIndexers(apiKey);
+        } catch (error) { await showError(error); }
+        finally { setBusy(false); }
+    };
+    setBusy(true);
+    loadConfig().catch(showError).finally(() => setBusy(false));
+}
+
 // code run on load
 
 usingApiKey()
 .then(api_key => {
 	loadIndexers(api_key);
+    setupProwlarr(api_key);
 	document.querySelector('#delete-indexer-edit').onclick = e => deleteIndexer(api_key);
 	document.querySelector('#test-indexer-edit').onclick = e => testEditIndexer(api_key);
 	document.querySelector('#test-indexer-add').onclick = e => testAddIndexer(api_key);

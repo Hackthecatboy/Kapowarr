@@ -1359,3 +1359,11 @@ def _migrate_torrent_job_ownership():
     cursor.execute("""UPDATE download_queue SET external_phase = 'submitting'
         WHERE client_type = 'torrent' AND external_id IS NULL
         AND external_phase = 'queued'""")
+
+
+@DatabaseMigrationHandler.register_handler(54)
+def _migrate_prowlarr_import():
+    from backend.internals.db import PROWLARR_SCHEMA
+    for statement in PROWLARR_SCHEMA.split(';'):
+        if statement.strip():
+            get_db().execute(statement)

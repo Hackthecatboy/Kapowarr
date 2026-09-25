@@ -1,5 +1,8 @@
 # Newznab and Torznab development setup
 
+For Prowlarr, you can use [import and refresh](prowlarr-sync.md) instead of
+entering each indexer endpoint manually.
+
 This build supports configuring and manually searching Newznab (Usenet) and
 Torznab (torrents). Newznab downloads are connected to SABnzbd/NZBGet; see
 [Usenet setup and limitations](usenet-downloads.md). Torznab downloads now use qBittorrent/Transmission; see
@@ -52,8 +55,9 @@ folders. Search metadata is retained for enqueue matching; run a fresh search
 if an older result is unavailable. Enabled indexers also participate in
 automatic searches and RSS discovery.
 
-Prowlarr import/synchronization and an entry in its Applications menu are not
-implemented. The owner has confirmed successful connection tests for Prowlarr
+Selected Prowlarr import and manual refresh are now available; see
+[the Prowlarr guide](prowlarr-sync.md). Native registration in its Applications
+menu is still not implemented. The owner has confirmed successful connection tests for Prowlarr
 Newznab/Torznab, qBittorrent and SABnzbd on the NAS. Live search, download and
 import verification remain in progress; automated checks use protocol fixtures
 and an isolated in-memory database.

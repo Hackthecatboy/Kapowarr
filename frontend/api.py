@@ -47,6 +47,7 @@ from backend.implementations.indexer_client_manager import IndexerClients
 from backend.implementations.naming import (generate_volume_folder_name,
                                             preview_mass_rename)
 from backend.implementations.remote_mapping import RemoteMappings
+from backend.implementations import prowlarr
 from backend.implementations.root_folders import RootFolders
 from backend.implementations.volumes import Library, delete_issue_file
 from backend.internals.db import get_db
@@ -790,6 +791,24 @@ def api_remote_mapping(id: int):
     elif request.method == 'DELETE':
         remote_mapping.delete()
         return return_api({})
+
+
+@api.route('/prowlarr', methods=['GET'])
+@error_handler
+@auth
+def api_prowlarr_config():
+    return return_api(prowlarr.public_configuration())
+
+
+@api.route('/prowlarr/<action>', methods=['POST'])
+@error_handler
+@auth
+def api_prowlarr_action(action: str):
+    if action not in ('preview', 'sync'):
+        raise InvalidKeyValue('action', action)
+    data = request.get_json(silent=True)
+    result = prowlarr.preview(data) if action == 'preview' else prowlarr.synchronize(data)
+    return return_api(result)
 
 
 # region Indexers

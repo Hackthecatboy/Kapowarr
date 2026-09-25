@@ -492,3 +492,32 @@
 #download-clients-page #add-remote-mapping {
 	min-height: 2.5rem;
 }
+
+#indexers-page .settings-container > p {
+    margin-bottom: 1rem;
+}
+
+.prowlarr-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    margin-block: 1rem;
+}
+
+.prowlarr-actions button {
+    padding: .6rem 1rem;
+    border-radius: 4px;
+    background: var(--accent-color);
+    color: var(--nav-background-color);
+}
+
+.prowlarr-actions button:disabled { opacity: .5; }
+
+#prowlarr-list label {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding-block: .4rem;
+}
+
+#prowlarr-list { margin-bottom: 1rem; }

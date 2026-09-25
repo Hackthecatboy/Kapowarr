@@ -591,3 +591,19 @@ CREATE TABLE IF NOT EXISTS status(
     PRIMARY KEY (status_type, subtype)
 );
 """
+
+
+PROWLARR_SCHEMA = """
+CREATE TABLE IF NOT EXISTS prowlarr_connection(
+    id INTEGER PRIMARY KEY CHECK(id=1),
+    url TEXT NOT NULL,
+    api_token TEXT NOT NULL,
+    categories TEXT NOT NULL DEFAULT '[7030]'
+);
+CREATE TABLE IF NOT EXISTS prowlarr_indexers(
+    remote_id INTEGER PRIMARY KEY,
+    indexer_id INTEGER NOT NULL UNIQUE,
+    FOREIGN KEY(indexer_id) REFERENCES indexer_clients(id) ON DELETE CASCADE
+);
+"""
+DB_SCHEMA += PROWLARR_SCHEMA

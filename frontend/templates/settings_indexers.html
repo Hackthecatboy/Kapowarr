@@ -94,17 +94,31 @@
 {% endblock windows %}
 
 {% block main %}
-<main>
+<main id="indexers-page">
 	<div class="settings-container">
+		<h2>Prowlarr Import</h2>
+        <p>Preview indexers from one Prowlarr connection, then select what to import or refresh. Refresh updates the selected managed entries' name, enable state, URL, API key and categories. Manual entries are left unchanged.</p>
+        <form id="prowlarr-form">
+            <table class="fold-table">
+                <tr><th><label for="prowlarr-url">Prowlarr URL</label></th><td><input id="prowlarr-url" type="url" required placeholder="http://prowlarr:9696"><p>Base address reachable from Kapowarr, including a reverse-proxy prefix if used.</p></td></tr>
+                <tr><th><label for="prowlarr-key">API Key</label></th><td><input id="prowlarr-key" type="password" autocomplete="new-password"><p id="prowlarr-key-help">Enter the API key from Prowlarr Settings → General.</p></td></tr>
+                <tr><th><label for="prowlarr-categories">Categories</label></th><td><input id="prowlarr-categories" value="7030" pattern="[ ]*[1-9][0-9]*([ ]*,[ ]*[1-9][0-9]*)*[ ]*"><p>7030 is Comics. This filter applies to selected imports; blank searches all categories.</p></td></tr>
+            </table>
+            <div class="prowlarr-actions">
+                <button type="submit" id="prowlarr-preview">Preview Indexers</button>
+                <button type="button" id="prowlarr-sync" disabled>Import / Refresh Selected</button>
+            </div>
+        </form>
+        <p id="prowlarr-status" role="status"></p>
+        <div id="prowlarr-list"></div>
+        <p>Refresh is manual. Missing, unsupported or disabled managed indexers are disabled locally, never deleted. Unselected entries are not otherwise updated. A successful preview tests Prowlarr access, not each indexer's search health.</p>
 		<h2>Direct Download Indexers</h2>
 		<div id="ddl-indexer-list" class="client-list">
 			<button id="add-ddl-indexer" class="add-button icon-text-color" title="Add DDL indexer">
 				<img src="{{url_base}}/static/img/cancel.svg" alt="">
 			</button>
 		</div>
-	</div>
 	{% for kind, title in [('torrent', 'Torrent Indexers'), ('usenet', 'Usenet Indexers')] %}
-	<div class="settings-container">
 		<h2>{{ title }}</h2>
 		{% if kind == 'torrent' %}<p>Add a Torznab indexer to search for torrents. For Prowlarr, use the API URL for an individual torrent indexer.</p>{% else %}<p>Add a Newznab indexer to search for Usenet releases. For Prowlarr, use the API URL for an individual Usenet indexer.</p>{% endif %}
 		<p>Configure the application that downloads releases under Download Clients.</p>
@@ -113,7 +127,7 @@
 				<img src="{{url_base}}/static/img/cancel.svg" alt="">
 			</button>
 		</div>
-	</div>
 	{% endfor %}
+	</div>
 </main>
 {% endblock main %}
