@@ -496,3 +496,9 @@ tbody .issue-title:hover {
 		display: none;
 	}
 }
+
+.search-preference-notes {
+    font-size: .85rem;
+    margin-top: .25rem;
+    color: var(--dimmed-text-color);
+}

@@ -61,3 +61,5 @@ menu is still not implemented. The owner has confirmed successful connection tes
 Newznab/Torznab, qBittorrent and SABnzbd on the NAS. Live search, download and
 import verification remain in progress; automated checks use protocol fixtures
 and an isolated in-memory database.
+
+Release selection filters and ranking: [download preferences](download-preferences.md).

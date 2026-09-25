@@ -38,7 +38,7 @@ class NewznabPrepper(DownloadPrepper):
         match = check_search_result_match(result, data, issues,
                                           {i.calculated_issue_number: extract_year_from_date(i.date) for i in issues}, wanted)
         if not self.force_match and not match['match']:
-            raise InvalidKeyValue('link', 'Release does not match this volume or issue')
+            raise InvalidKeyValue('link', match['match_issue'] or 'Release does not match this volume or issue')
         return [self.create_download(result)]
 
     def create_download(self, result):

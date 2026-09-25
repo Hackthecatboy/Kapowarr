@@ -1,6 +1,15 @@
+const preferenceFields = {
+    download_min_size_mb: 'number', download_max_size_mb: 'number',
+    download_preferred_formats: 'list', download_preferred_terms: 'list',
+    download_excluded_terms: 'list'
+};
+const preferenceInput = key => document.querySelector('#' + key.replaceAll('_', '-') + '-input');
+
 function fillSettings(api_key) {
 	fetchAPI('/settings', api_key)
 	.then(json => {
+        for (const [key, type] of Object.entries(preferenceFields))
+            preferenceInput(key).value = type === 'list' ? (json.result[key] || []).join(', ') : (json.result[key] || 0);
 		document.querySelector('#download-folder-input').value = json.result.download_folder;
 		document.querySelector('#concurrent-direct-downloads-input').value = json.result.concurrent_direct_downloads;
 		document.querySelector('#download-timeout-input').value = ((json.result.failing_download_timeout || 0) / 60) || '';
@@ -10,6 +19,9 @@ function fillSettings(api_key) {
 };
 
 function saveSettings(api_key) {
+    if (!document.querySelector('#settings-form').reportValidity()) return;
+    document.querySelector('#preference-settings-error').textContent = '';
+    Object.keys(preferenceFields).forEach(key => preferenceInput(key).classList.remove('error-input'));
 	document.querySelector("#save-button p").innerText = 'Saving';
 	document.querySelector('#download-folder-input').classList.remove('error-input');
 	const data = {
@@ -19,6 +31,10 @@ function saveSettings(api_key) {
 		'seeding_handling': document.querySelector('#seeding-handling-input').value,
 		'delete_completed_downloads': document.querySelector('#delete-downloads-input').checked
 	};
+    for (const [key, type] of Object.entries(preferenceFields)) {
+        const value = preferenceInput(key).value;
+        data[key] = type === 'list' ? value.split(',').map(term => term.trim()).filter(Boolean) : Number(value || 0);
+    }
 	sendAPI('PUT', '/settings', api_key, {}, data)
 	.then(response => 
 		document.querySelector("#save-button p").innerText = 'Saved'
@@ -26,6 +42,11 @@ function saveSettings(api_key) {
 	.catch(e => {
 		document.querySelector("#save-button p").innerText = 'Failed';
         e.json().then(e => {
+            if (e.error === 'InvalidKeyValue' && e.result.key in preferenceFields) {
+                preferenceInput(e.result.key).classList.add('error-input');
+                document.querySelector('#preference-settings-error').textContent = `Invalid ${e.result.key.replaceAll('_', ' ')}: ${e.result.value}`;
+                return;
+            }
             if (
                 e.error === "InvalidKeyValue"
                 && e.result.key === "download_folder"

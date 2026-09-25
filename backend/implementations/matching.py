@@ -16,6 +16,7 @@ from backend.base.definitions import IssueData, SpecialVersion, VolumeMetadata
 from backend.base.file_extraction import special_version_regex
 from backend.base.helpers import force_range, fully_normalise_string
 from backend.implementations.blocklist import blocklist_contains
+from backend.implementations.download_preferences import evaluate_preferences
 
 if TYPE_CHECKING:
     from backend.base.definitions import (FilenameData, SearchResultData,
@@ -493,7 +494,8 @@ def check_search_result_match(
             # extracted issue number(s) don't match number of searched issue
             return {'match': False, 'match_issue': "Issue numbers don't match"}
 
-    return {'match': True, 'match_issue': None}
+    preference = evaluate_preferences(result)
+    return {'match': preference['rejection'] is None, 'match_issue': preference['rejection']}
 
 
 ONE_ISSUE_MATCH = (

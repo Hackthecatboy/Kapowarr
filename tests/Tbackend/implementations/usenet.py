@@ -2,6 +2,7 @@
 
 import sqlite3
 import unittest
+from backend.internals.settings import PublicSettingsValues
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -145,6 +146,7 @@ class UsenetAdapters(unittest.TestCase):
 
 class ManagedUsenet(unittest.TestCase):
     def setUp(self):
+        self.patch('backend.implementations.download_preferences.Settings', return_value=SimpleNamespace(sv=PublicSettingsValues()))
         setup_db_adapters_and_converters()
         self.db = sqlite3.connect(':memory:', detect_types=sqlite3.PARSE_DECLTYPES)
         self.db.row_factory = sqlite3.Row

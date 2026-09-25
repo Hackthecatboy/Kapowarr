@@ -91,3 +91,5 @@ Prowlarr, swarm transfers and Synology checks remain pending.
 
 API references: [qBittorrent Web API](https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0)),
 [Transmission RPC](https://github.com/transmission/transmission/blob/main/docs/rpc-spec.md).
+
+Release selection filters and ranking: [download preferences](download-preferences.md).

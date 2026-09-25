@@ -395,6 +395,15 @@ function showManualSearch(api_key, issue_id=null) {
 			const title = entry.querySelector('a');
 			title.href = result.link;
 			title.innerText = result.display_title;
+            const notes = [...(result.preference_notes || [])];
+            if (!result.match && result.match_issue && !notes.includes(result.match_issue))
+                notes.unshift(result.match_issue);
+            if (notes.length) {
+                const explanation = document.createElement('p');
+                explanation.className = 'search-preference-notes';
+                explanation.textContent = notes.join(' · ');
+                title.parentElement.appendChild(explanation);
+            }
 
 			entry.querySelector('.source-column').innerText = result.indexer_title;
 			

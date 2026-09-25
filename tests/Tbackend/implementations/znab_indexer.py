@@ -3,6 +3,7 @@
 import asyncio
 import sqlite3
 import unittest
+from backend.internals.settings import PublicSettingsValues
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -27,6 +28,7 @@ from frontend.api import api
 
 class ZnabIntegration(unittest.TestCase):
     def setUp(self):
+        self.start_patch('backend.implementations.download_preferences.Settings', return_value=SimpleNamespace(sv=PublicSettingsValues()))
         IndexerClients.trigger_client_registration()
         QueryBuilders.trigger_builder_registration()
         setup_db_adapters_and_converters()

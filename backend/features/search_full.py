@@ -14,6 +14,7 @@ from backend.base.helpers import (check_overlapping_issues,
 from backend.base.logging import LOGGER
 from backend.implementations.indexer_client_manager import IndexerClients
 from backend.implementations.matching import check_search_result_match
+from backend.implementations.download_preferences import evaluate_preferences
 from backend.implementations.query_builder_manager import QueryBuilders
 from backend.implementations.search_action_planner import SearchActionPlanner
 from backend.implementations.volumes import Volume
@@ -111,6 +112,7 @@ class SearchCoordinator:
 
         # Prefer matches (False == 0 == higher rank)
         rating.append(not result['match'])
+        rating.extend(evaluate_preferences(result)['rank'])
 
         # The more words in the search term that are present in
         # the search results' title, the higher ranked it gets
@@ -311,7 +313,8 @@ class SearchCoordinator:
                         self.found_links.add(indexer_result['link'])
                         self.found_results.append({
                             **indexer_result,
-                            **match_result
+                            **match_result,
+                            'preference_notes': evaluate_preferences(indexer_result)['notes']
                         })
 
                 team["search_action_planner"].process_stats(stats)
@@ -392,7 +395,9 @@ def choose_downloads(
     chosen_downloads: List[SearchResultDataType] = []
     searchable_issue_numbers = {i[1] for i in open_issues}
 
-    for search_result in search_results:
+    for search_result in sorted(search_results, key=lambda result: evaluate_preferences(result)['rank']):
+        if evaluate_preferences(search_result)['rejection']:
+            continue
         if not search_result.get('download_supported', True):
             continue
         # Determine what issues the result covers

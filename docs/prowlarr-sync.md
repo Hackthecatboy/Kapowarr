@@ -77,5 +77,5 @@ Automated checks cover preview without writes, saved-key reuse/rotation, both
 protocols, stable IDs, manual duplicates, selected updates, disable/re-enable,
 malformed responses, authentication, migration, rollback and deletion ownership.
 Browser checks cover selection, safe labels, stale previews, failures and layout.
-The user confirmed Prowlarr import working on the NAS. Later-indexer refresh
-and reconciliation still need live verification.
+The user confirmed Prowlarr import and later-indexer refresh working on the NAS.
+Advanced disable/removal reconciliation can be tested separately.

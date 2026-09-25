@@ -124,6 +124,12 @@ class PublicSettingsValues:
     seeding_handling: SeedingHandling = SeedingHandling.COPY
     delete_completed_downloads: bool = True
 
+    download_min_size_mb: int = 0
+    download_max_size_mb: int = 0
+    download_preferred_formats: CommaList = field(default_factory=lambda: CommaList(''))
+    download_preferred_terms: CommaList = field(default_factory=lambda: CommaList(''))
+    download_excluded_terms: CommaList = field(default_factory=lambda: CommaList(''))
+
     date_type: DateType = DateType.COVER_DATE
 
     def todict(self, to_public: bool = True) -> Dict[str, Any]:
@@ -421,7 +427,19 @@ class Settings(metaclass=Singleton):
         # Do key-specific checks and formatting
         converted_value = value
 
-        if key == 'auth_username':
+        if key in ('download_min_size_mb', 'download_max_size_mb'):
+            if type(value) is not int or not 0 <= value <= 1_000_000:
+                raise InvalidKeyValue(key, value)
+
+        elif key in ('download_preferred_formats', 'download_preferred_terms', 'download_excluded_terms'):
+            terms = list(dict.fromkeys(term.strip().lower() for term in value if term.strip()))
+            if len(terms) > 50 or any(len(term) > 100 for term in terms):
+                raise InvalidKeyValue(key, 'Use at most 50 terms, each up to 100 characters')
+            if key == 'download_preferred_formats' and any(term not in ('cbz', 'cbr', 'pdf') for term in terms):
+                raise InvalidKeyValue(key, 'Supported format preferences: cbz, cbr, pdf')
+            converted_value = CommaList(terms)
+
+        elif key == 'auth_username':
             if value == Constants.CREDENTIAL_REPLACEMENT:
                 converted_value = self.sv.auth_username
 
@@ -596,6 +614,10 @@ class Settings(metaclass=Singleton):
             **self.get_settings().todict(to_public=False),
             **formatted_data
         })
+
+        if (settings_after_update.download_max_size_mb
+                and settings_after_update.download_min_size_mb > settings_after_update.download_max_size_mb):
+            raise InvalidKeyValue('download_max_size_mb', 'Maximum must be at least the minimum, or zero for unlimited')
 
         if settings_after_update.proxy_type != ProxyType.NONE:
             if not settings_after_update.proxy_host:

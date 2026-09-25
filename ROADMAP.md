@@ -55,7 +55,7 @@ an uncertain submission or partially completed import.
 Acceptance: imported comic matches the library issue, original torrent data is
 unchanged, and restarting does not submit or import it again.
 
-### 3. Prowlarr synchronization — import verified; refresh validation next
+### 3. Prowlarr synchronization — import and refresh user-verified
 
 - [x] Import selected indexers from a Prowlarr address and API key.
 - [x] Update imported indexers without duplicates or overwriting unrelated entries.
@@ -63,8 +63,8 @@ unchanged, and restarting does not submit or import it again.
 - [x] Keep manual Newznab/Torznab setup available.
 
 One saved connection, read-only preview, selected import and manual refresh are
-implemented. The user confirmed import working on Synology; later-indexer
-refresh and reconciliation remain to be verified. See
+implemented. The user confirmed import and later-indexer refresh working on Synology.
+Advanced disable/removal reconciliation remains separately testable. See
 [the setup and validation guide](docs/prowlarr-sync.md).
 Scheduled refresh, multiple connections and adopting manual entries remain future
 extensions.
@@ -72,12 +72,17 @@ extensions.
 Native registration in Prowlarr's Applications menu is a separate integration
 question; importing its indexers does not establish that support.
 
-### 4. Comic download preferences and upgrades
+### 4. Comic download preferences and upgrades — preferences implemented
 
-- [ ] Preferred formats and size limits.
-- [ ] Release-group preferences and explainable scoring.
+- [x] Preferred formats and whole-release size limits.
+- [x] Literal release-title term preferences/exclusions (including group names)
+  and explainable ranking; verified group metadata parsing remains future work.
 - [ ] Upgrade rules and a stopping point once the desired quality is met.
-- [ ] Explain selection/rejection reasons in manual search.
+- [x] Explain selection/rejection reasons in manual search.
+
+See [download preferences](docs/download-preferences.md) for rules and the
+search-only NAS test. Live verification is pending. Automatic replacement of
+existing issues remains unimplemented; missing-issue selection is unchanged.
 
 ### 5. Failed-download handling
 

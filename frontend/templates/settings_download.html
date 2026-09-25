@@ -72,6 +72,16 @@
 					</tr>
 				</tbody>
 			</table>
+			<h2>Release Preferences</h2>
+			<p>Used by manual search, automatic search and RSS. Automatic searches continue to fill missing issues; existing library files are not upgraded or replaced.</p>
+			<p id="preference-settings-error" class="error" role="status"></p>
+			<table class="fold-table"><tbody>
+<tr><th><label for="download-min-size-mb-input">Minimum Release Size (MiB)</label></th><td><input id="download-min-size-mb-input" type="number" min="0" max="1000000" step="1"><p>0 disables the minimum. Applies to the entire release, including packs.</p></td></tr>
+<tr><th><label for="download-max-size-mb-input">Maximum Release Size (MiB)</label></th><td><input id="download-max-size-mb-input" type="number" min="0" max="1000000" step="1"><p>0 disables the maximum. Releases with unknown size remain eligible.</p></td></tr>
+<tr><th><label for="download-preferred-formats-input">Preferred Formats</label></th><td><input id="download-preferred-formats-input" type="text"><p>Comma-separated, best first: cbz, cbr, pdf. Blank gives no preference. Only explicit title labels are used; unknown formats remain eligible.</p></td></tr>
+<tr><th><label for="download-preferred-terms-input">Preferred Release Terms</label></th><td><input id="download-preferred-terms-input" type="text"><p>Comma-separated literal terms, such as release-group names. Whole-term matches in release titles rank higher; matching is case-insensitive.</p></td></tr>
+<tr><th><label for="download-excluded-terms-input">Excluded Release Terms</label></th><td><input id="download-excluded-terms-input" type="text"><p>Comma-separated literal title terms. Matching releases are rejected. Exclusions take precedence over preferences.</p></td></tr>
+			</tbody></table>
 		</form>
 	</div>
 </main>

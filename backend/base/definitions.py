@@ -710,6 +710,7 @@ class SearchQuery(TypedDict):
 
 
 class SearchResultData(FilenameData):
+    preference_notes: NotRequired[List[str]]
     download_supported: NotRequired[bool]
     link: str
     display_title: str

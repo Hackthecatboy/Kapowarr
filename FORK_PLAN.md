@@ -9,7 +9,9 @@ client catalog are still pending.
 See [ROADMAP.md](ROADMAP.md) for current priorities and acceptance criteria.
 Queue recovery is user-verified on Synology. Torrent runtime validation is blocked
 by the reported Prowlarr/Bitmag issue. Selected Prowlarr import and manual refresh
-are implemented and await NAS validation; see [docs/prowlarr-sync.md](docs/prowlarr-sync.md). Checkpoints below are historical;
+are user-verified on Synology; see [docs/prowlarr-sync.md](docs/prowlarr-sync.md).
+Release preferences are implemented and await NAS validation; see
+[docs/download-preferences.md](docs/download-preferences.md). Checkpoints below are historical;
 the roadmap distinguishes current implementation from live verification.
 
 ## GHCR setup checkpoint (September 24, 2026)
