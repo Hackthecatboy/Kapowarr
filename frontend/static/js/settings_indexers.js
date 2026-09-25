@@ -475,8 +475,10 @@ function setupProwlarr(apiKey) {
         url.value = json.result.url;
         categories.value = json.result.categories.join(', ');
         key.value = '';
+        key.placeholder = json.result.has_api_key ? 'Saved API key — leave blank to reuse' : '';
+        previewButton.textContent = json.result.has_api_key ? 'Refresh Indexer List' : 'Preview Indexers';
         document.querySelector('#prowlarr-key-help').textContent = json.result.has_api_key
-            ? 'API key saved. Leave blank to keep it, or enter a replacement.'
+            ? 'Connection saved. Refresh Indexer List uses the saved API key; enter a key here only to replace it.'
             : 'Enter the API key from Prowlarr Settings → General.';
     }
     async function preview() {

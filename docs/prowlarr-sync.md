@@ -34,6 +34,14 @@ Optional, using only an indexer safe to change in your Prowlarr setup: rename or
 disable it there, then preview and refresh here. Verify Kapowarr follows the
 change. Changes in Prowlarr can affect other connected applications too.
 
+## Adding indexers later
+
+The connection, API key and category filter are saved after import. Return to
+**Settings → Indexers → Prowlarr Import** and click **Refresh Indexer List**.
+Leave the key field blank to reuse the saved key. Select any new entries, then
+click **Import / Refresh Selected**. Refreshing the list is read-only; it does not
+automatically import newly added indexers.
+
 ## Ownership and refresh rules
 
 - Imported entries are tracked by Prowlarr indexer ID and local indexer ID.
@@ -69,4 +77,5 @@ Automated checks cover preview without writes, saved-key reuse/rotation, both
 protocols, stable IDs, manual duplicates, selected updates, disable/re-enable,
 malformed responses, authentication, migration, rollback and deletion ownership.
 Browser checks cover selection, safe labels, stale previews, failures and layout.
-Live Prowlarr import/refresh verification on the NAS remains pending.
+The user confirmed Prowlarr import working on the NAS. Later-indexer refresh
+and reconciliation still need live verification.

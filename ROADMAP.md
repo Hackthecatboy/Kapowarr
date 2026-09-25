@@ -55,7 +55,7 @@ an uncertain submission or partially completed import.
 Acceptance: imported comic matches the library issue, original torrent data is
 unchanged, and restarting does not submit or import it again.
 
-### 3. Prowlarr synchronization — implemented; NAS validation next
+### 3. Prowlarr synchronization — import verified; refresh validation next
 
 - [x] Import selected indexers from a Prowlarr address and API key.
 - [x] Update imported indexers without duplicates or overwriting unrelated entries.
@@ -63,7 +63,9 @@ unchanged, and restarting does not submit or import it again.
 - [x] Keep manual Newznab/Torznab setup available.
 
 One saved connection, read-only preview, selected import and manual refresh are
-implemented. See [the setup and validation guide](docs/prowlarr-sync.md).
+implemented. The user confirmed import working on Synology; later-indexer
+refresh and reconciliation remain to be verified. See
+[the setup and validation guide](docs/prowlarr-sync.md).
 Scheduled refresh, multiple connections and adopting manual entries remain future
 extensions.
 
