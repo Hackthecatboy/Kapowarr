@@ -8,14 +8,14 @@ The full client catalog and live client/NAS verification remain pending.
 
 - Added a branch-triggered GitHub Actions workflow that runs tests and builds
   the AMD64 Synology image, with `dev` and full commit SHA tags in GHCR.
-- Added `compose.synology.ghcr.yml` and a private-image authentication/project
+- Added `compose.synology.ghcr.yml` and a public-image project
   walkthrough in [docs/synology-ghcr.md](docs/synology-ghcr.md).
 - The local source-build Compose file and update script remain available.
-- Local validation: 104 tests pass, Compose configuration resolves, workflow
-  YAML and embedded Python validate. First GitHub build succeeded, but the
-  post-build anonymous manifest check found access was allowed. Added a
-  pre/post-publish anonymous-access guard. Package privacy needs resolution
-  before private deployment; NAS runtime validation is still pending.
+- The owner approved public GHCR images. Removed the privacy publishing guards
+  and added a prominent unofficial personal-development notice to the README
+  and image metadata. NAS pulls require no GitHub token.
+- First GitHub image build and all 104 tests passed. NAS runtime validation
+  remains pending.
 
 ## Torrent checkpoint (September 21, 2026)
 

@@ -1,6 +1,6 @@
 # Run the fork on Synology using local builds
 
-For ready-built private GitHub images and a Container Manager project, follow
+For ready-built GitHub development images and a Container Manager project, follow
 [the GHCR setup guide](synology-ghcr.md). This page covers the alternative local build.
 
 This setup pulls `Hackthecatboy/Kapowarr` from GitHub, builds an image on the

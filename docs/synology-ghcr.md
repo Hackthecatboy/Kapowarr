@@ -1,11 +1,8 @@
-# Private GitHub images on Synology
+# GitHub development images on Synology
 
-**Setup checkpoint (September 24):** the first GitHub build succeeded, but
-an unauthenticated registry check could retrieve the `dev` manifest. Check
-the package's actual visibility before proceeding with private deployment.
-Further publication is blocked while anonymous access works. GitHub does not
-allow a public package to become private again; if confirmed public, choose a
-new private package name and review removal of the exposed package separately.
+This unofficial personal development fork publishes public GHCR images.
+No GitHub account or token is required to pull them. See the
+[fork notice](../README.md) before using these experimental builds.
 
 GitHub Actions builds `Dockerfile.synology` for the DS2422+ (`linux/amd64`) on
 pushes to `feature/sonarr-integrations`, after the Python tests pass. Images go
@@ -25,13 +22,10 @@ The workflow uses GitHub's automatic `GITHUB_TOKEN`; you do not need to add a
 publishing token to repository secrets. If organization/account policy blocks
 package writes, the Actions log will explain the permission failure.
 
-Visit your GitHub profile's **Packages**, open **kapowarr**, and confirm it says
-**Private** and contains the `dev` tag. New GHCR packages default to private,
-independently of the public source repository. The workflow refuses to update
-an existing package that it can see is public. Do not change package visibility
-to public while using this development workflow.
+Visit your GitHub profile's **Packages**, open **kapowarr**, and confirm the
+`dev` tag is available.
 
-## 2. Check the NAS and pull the private image
+## 2. Check the NAS and pull the image
 
 Enable SSH in DSM and connect using your NAS administrator account. Run:
 
@@ -44,24 +38,14 @@ sudo docker version
 Expect `x86_64`. Choose the NAS account that will own the test files and run
 `id USERNAME` for its UID and primary GID. These must be NAS IDs.
 
-In GitHub **Settings → Developer settings → Personal access tokens → Tokens
-(classic)**, create an expiring token with **read:packages**. Use it only on the
-NAS; do not put it in Compose, the repository, or chat. Authenticate interactively:
-
-```bash
-sudo docker login ghcr.io -u Hackthecatboy
-```
-
-At the password prompt paste the token, not your GitHub password. Then run:
+Pull the public image directly:
 
 ```bash
 sudo docker pull ghcr.io/hackthecatboy/kapowarr:dev
 ```
 
-Use `sudo` consistently so login and pulls use the same Docker credential file.
-An expired/revoked token requires login again. We pre-pull through SSH because
-Container Manager's registry search and GUI credentials can differ from Docker
-CLI credentials; you do not need GHCR search in the Registry tab.
+No registry login is needed. Pre-pulling through SSH verifies that the NAS can
+reach GHCR; you do not need GHCR search in Container Manager's Registry tab.
 
 ## 3. Create the Container Manager project
 
@@ -89,8 +73,8 @@ ownership of db, logs, and downloads; DSM shared-folder ACLs must allow access.
 In **Container Manager → Project → Create**, use name **kapowarr-dev**, path
 `/volume1/docker/kapowarr-dev`, and the existing `compose.yaml`. Build/start the
 project. The image has already been pulled and this Compose file has no build
-section. If your DSM version still attempts an authenticated pull and fails,
-use the CLI fallback below; do not make the package public to bypass login.
+section. If the GUI cannot start the project, use the CLI fallback below
+to inspect the error.
 
 Check the container logs and health, then open `http://NAS-IP:5657`. Inside
 Kapowarr select `/comics` as the root folder and `/app/temp_downloads` for
@@ -131,6 +115,6 @@ script belongs to the separate local source-build setup.
 
 ## References
 
-- [GitHub Container Registry and private authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
+- [GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
 - [Publishing images with GitHub Actions](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)
 - [Synology Container Manager Projects](https://kb.synology.com/en-global/DSM/help/ContainerManager/docker_project?version=7)

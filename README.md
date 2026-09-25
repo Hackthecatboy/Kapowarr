@@ -1,3 +1,16 @@
+> **Unofficial personal development fork**
+>
+> This repository is a personal development and testing fork of
+> [Casvt/Kapowarr](https://github.com/Casvt/Kapowarr). It is not an official
+> Kapowarr release and is not affiliated with or endorsed by the upstream
+> maintainer. Experimental changes and public GHCR images are provided for
+> personal testing, with no promise of stability or support.
+>
+> Development takes place on `feature/sonarr-integrations`. See the
+> [fork plan](FORK_PLAN.md) and [Synology test setup](docs/synology-ghcr.md).
+> Please keep fork-specific issues in this repository rather than directing
+> them to upstream support. The original project information follows below.
+
 <p align="center">
     <img src="./frontend/static/img/favicon.svg" alt="Kapowarr" style="margin: 20px 0; width: 15rem;">
 </p>

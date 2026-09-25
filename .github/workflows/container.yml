@@ -21,8 +21,6 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Block publishing to an anonymously accessible image
-        run: python3 .github/scripts/check-image-private.py
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13'
@@ -33,30 +31,6 @@ jobs:
         run: |
           mkdir -p db
           python -m unittest discover -s tests -p '*.py'
-      - name: Require private package or a new package
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import urllib.error
-          import urllib.request
-          request = urllib.request.Request(
-              'https://api.github.com/users/hackthecatboy/packages/container/kapowarr',
-              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-                       'Accept': 'application/vnd.github+json'})
-          try:
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  package = json.load(response)
-          except urllib.error.HTTPError as error:
-              if error.code != 404:
-                  raise
-              print('New package: GHCR defaults to private visibility.')
-          else:
-              if package['visibility'] != 'private':
-                  raise SystemExit('Package must be private before publishing development builds.')
-          PY
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
@@ -75,9 +49,8 @@ jobs:
             ghcr.io/hackthecatboy/kapowarr:sha-${{ github.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/Hackthecatboy/Kapowarr
+            org.opencontainers.image.description=Unofficial Kapowarr fork for personal development and testing; not endorsed by upstream.
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=GPL-3.0-only
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Verify anonymous access is denied after publishing
-        run: python3 .github/scripts/check-image-private.py
