@@ -66,7 +66,7 @@ def run_torrent(handler, download):
             download.error = 'Client connection failed. Check credentials and availability.'
         except Exception:
             download.path_review = False
-            LOGGER.error(
+            LOGGER.exception(
                 'Torrent job %s needs review after a processing error', download.id)
             download.error, review = 'Processing failed. Inspect the client and library copy; automatic retry is paused.', True
             if download.state not in (DS.CANCELED_STATE, DS.SHUTDOWN_STATE):

@@ -133,7 +133,7 @@ def run_usenet(handler, download):
             # re-enters submit_once, which holds it instead of submitting twice.
         except Exception:
             download.path_review = False
-            LOGGER.error(
+            LOGGER.exception(
                 'Usenet job %s needs review after an import or persistence error', download.id)
             download.error = 'Processing failed. Inspect the client and import folder; automatic retry is paused.'
             review = True
