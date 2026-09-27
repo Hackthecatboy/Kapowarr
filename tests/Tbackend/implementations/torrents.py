@@ -587,3 +587,32 @@ class TorrentHTTP(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join()
+
+
+class TrackedTorrentReview(unittest.TestCase):
+    def test_review_available_for_completed_qbit_payloads(self):
+        job = object.__new__(TorrentDownload)
+        job.external_client = object.__new__(qBittorrent)
+        job.external_client._id = 1
+        job._external_id = HASH
+        job.phase = 'submitted'
+        with patch('backend.implementations.download_clients.Usenet.UsenetDownload.as_dict', return_value={}):
+            for state in (DS.SEEDING_STATE, DS.IMPORTING_STATE):
+                job._state = state
+                result = job.as_dict()
+                self.assertTrue(result['can_review'])
+                self.assertEqual(result['client_id'], 1)
+                self.assertEqual(result['torrent_hash'], HASH)
+            job.phase = 'importing'
+            self.assertFalse(job.as_dict()['can_review'])
+            job.phase = 'imported'
+            self.assertTrue(job.as_dict()['can_review'])
+            job._state = DS.DOWNLOADING_STATE
+            self.assertFalse(job.as_dict()['can_review'])
+            job._state = DS.SEEDING_STATE
+            job._external_id = ''
+            self.assertFalse(job.as_dict()['can_review'])
+            job._external_id = HASH
+            job.external_client = object.__new__(Transmission)
+            job.external_client._id = 1
+            self.assertFalse(job.as_dict()['can_review'])

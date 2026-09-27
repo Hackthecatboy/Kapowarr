@@ -20,6 +20,19 @@ class TorrentDownload(UsenetDownload):
     download_type = DownloadType.TORRENT
     token = ''
 
+    def as_dict(self):
+        result = super().as_dict()
+        # Tracked torrents are excluded from category discovery, but their
+        # completed payloads may still contain files needing Pack Inbox review.
+        result.update(
+            client_id=self.external_client.id,
+            torrent_hash=self.external_id,
+            can_review=bool(self.external_id) and self.uses_category_paths
+            and self.state in (DS.SEEDING_STATE, DS.IMPORTING_STATE)
+            and self.phase != 'importing'
+        )
+        return result
+
     @property
     def target_folder(self):
         return Path(self.download_folder) / ('kapowarr-' + self.token)

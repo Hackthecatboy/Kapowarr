@@ -145,3 +145,12 @@ Release selection filters and ranking: [download preferences](download-preferenc
 External jobs poll every five seconds. Activity refreshes every five seconds while
 visible and after a WebSocket reconnect; qBittorrent/Transmission supply progress
 and speed. This is polling, so the display may lag the client by a polling interval.
+
+### Reviewing tracked collections
+
+Completed qBittorrent downloads in Activity offer **Review Files**, including
+those added through Prowlarr and already tracked by Kapowarr. This opens the
+original completed payload in Pack Inbox so mixed collections can be matched
+across library series. The action is unavailable while the managed import is
+copying files. Completion, category and remote path checks run again on click;
+review does not remove or modify seeding originals.

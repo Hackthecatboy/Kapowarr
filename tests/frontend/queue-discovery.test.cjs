@@ -24,7 +24,7 @@ async function page(t) {
     });
     t.after(() => dom.window.close());
     const w = dom.window;
-    const state = { jobs: [{ ...discovered }], calls: [], errors: [] };
+    const state = { jobs: [{ ...discovered }], tracked: [], calls: [], errors: [] };
     w.url_base = '/kapowarr';
     w.usingApiKey = async () => 'key';
     w.socket = { on() {} };
@@ -32,7 +32,7 @@ async function page(t) {
     w.convertSize = value => String(value);
     w.minDecimalPoints = value => String(value);
     w.fetchAPI = async path => {
-        if (path === '/activity/queue') return { result: [] };
+        if (path === '/activity/queue') return { result: state.tracked };
         assert.equal(path, '/activity/queue/discovered');
         return { result: { downloads: state.jobs, errors: state.errors } };
     };
@@ -96,4 +96,20 @@ test('review waits for the scan response body and recovers from interrupted deli
     await pending;
     assert.equal(el('#queue .review-torrent-dl').disabled, false);
     assert.match(el('#queue .recovery-error').textContent, /Could not scan/);
+});
+
+
+test('tracked completed torrents offer review without duplicating discovery rows', async t => {
+    const { w, el, state } = await page(t);
+    state.jobs = [];
+    state.tracked = [{ ...discovered, id: 42, discovered: false }];
+    await w.fillQueue('key');
+    assert.equal(el('#queue').children.length, 1);
+    assert.equal(el('#queue .review-torrent-dl').classList.contains('hidden'), false);
+    assert.equal(el('#queue .remove-dl').hidden, false);
+    await el('#queue .review-torrent-dl').onclick();
+    assert.deepEqual(state.calls[0][4], { client_id: 1, info_hash: hash });
+    state.tracked[0].can_review = false;
+    await w.fillQueue('key');
+    assert.equal(el('#queue .review-torrent-dl').classList.contains('hidden'), true);
 });

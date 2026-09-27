@@ -28,7 +28,6 @@ function addQueueEntry(api_key, obj) {
         source.removeAttribute('href');
         entry.classList.add('discovered-torrent');
         entry.querySelectorAll('.move-up-dl,.move-down-dl,.remove-dl,.blocklist-dl').forEach(button => button.hidden = true);
-        entry.querySelector('.review-torrent-dl').onclick = () => reviewTorrent(obj, api_key, entry);
     }
     source.title = `Page Title:\n${obj.web_title}`;
     if (obj.web_sub_title !== null)
@@ -62,7 +61,8 @@ function updateQueueEntry(obj) {
 	const tr = document.querySelector(`#queue > tr[data-id="${obj.id}"]`);
     if (!tr) return;
     const review = tr.querySelector('.review-torrent-dl');
-    review.classList.toggle('hidden', !obj.discovered);
+    review.classList.toggle('hidden', !obj.discovered && !obj.can_review);
+    review.onclick = () => usingApiKey().then(api_key => reviewTorrent(obj, api_key, tr));
     review.disabled = !obj.can_review || tr.dataset.reviewBusy === 'true';
     tr.querySelector('.retry-import-dl').classList.toggle('hidden', !obj.can_retry);
     tr.querySelector('.forget-dl').classList.toggle('hidden', !obj.can_forget);
