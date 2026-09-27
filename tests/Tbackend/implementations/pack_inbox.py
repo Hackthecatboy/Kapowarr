@@ -192,6 +192,25 @@ class PackInbox(unittest.TestCase):
         os.utime(source,None)
         self.assertIn('recently',self.scan()[0]['message'])
 
+    def test_settling_boundary_is_thirty_seconds(self):
+        source = self.comic('Alpha Comics 001 (2026).cbz')
+        os.utime(source, (1000, 1000))
+        with patch.object(pack_inbox, 'time', return_value=1029):
+            self.assertIn('recently', self.scan()[0]['message'])
+        with patch.object(pack_inbox, 'time', return_value=1030):
+            self.assertEqual(self.scan()[0]['status'], 'matched')
+
+    def test_unmatched_file_offers_filename_series_search(self):
+        self.comic('2026 Weekly Pack/New Series 001 (2026) (Digital).cbz')
+        row = self.scan()[0]
+        self.assertEqual(row['status'], 'review')
+        self.assertEqual(row['series_query'], 'New Series')
+        self.volume(3, 'New Series')
+        self.db.commit()
+        row = self.scan()[0]
+        self.assertEqual(row['status'], 'matched')
+        self.assertNotIn('series_query', row)
+
     def test_api_authentication(self):
         app=Flask(__name__); app.register_blueprint(api,url_prefix='/api')
         client=app.test_client()

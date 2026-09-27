@@ -207,7 +207,7 @@ def _worker(ident, item, destination):
             return
         ready = destination / 'ready'
         extract_zip(archive, ready)
-        _update(ident, status='ready', message='ZIP extracted. Review in Pack Inbox; recently written files need one minute before scanning. Original archive retained.')
+        _update(ident, status='ready', message='ZIP extracted. Review in Pack Inbox; recently written files need 30 seconds before scanning. Original archive retained.')
     except Exception:
         LOGGER.exception('Pack download %s needs review', ident)
         _update(ident, status='held', message='Download or extraction failed. Inspect System Logs and the retained folder; no automatic retry.')

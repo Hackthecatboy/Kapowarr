@@ -23,7 +23,7 @@ Use the isolated development container and a small completed test folder:
    library mounts must remain writable. Recreate the development container after
    updating its image and Compose configuration.
 3. Open **Volumes → Pack Inbox**, enter `/pack-inbox`, and select **Save Folder &
-   Scan**. Wait at least a minute after files finish changing before scanning.
+   Scan**. Wait at least 30 seconds after files finish changing before scanning.
 4. Inspect the rows. Unique missing-issue matches are selectable. Unknown series,
    ambiguous matches, outer archives and recently modified files stay in review.
    Existing files are marked owned. Nothing is copied during a scan.
@@ -120,7 +120,7 @@ In **Volumes → Pack Inbox → Download a GetComics pack**:
    at a time. The same article/link cannot be submitted twice, even after restart.
 4. ZIP packs extract into `Pack-<job-id>/ready`, retaining `payload.archive` beside
    that folder. Comic archives within the ZIP are kept intact. After completion,
-   wait one minute, select **Scan Pack for Review**, and import reviewed matches
+   wait 30 seconds, select **Scan Pack for Review**, and import reviewed matches
    using the existing inbox controls. No files are automatically imported.
 
 The first slice reuses GetComics link discovery/resolution and HTTP download
@@ -144,3 +144,14 @@ Fixture tests cover article validation, authenticated endpoints, persisted job
 submission, duplicate suppression, interrupted jobs, ZIP extraction, unsafe paths,
 truncated downloads, source preservation and exclusion of unfinished scans. Live
 GetComics hosting behavior still needs verification with a small test pack.
+
+## Add a missing series from review
+
+Unmatched rows offer **Find / Add Series**, opening the existing Add Volume search
+in a new tab with the parsed series title. Select the correct series/edition and
+root folder there. Return to Pack Inbox and click **Save Folder & Scan** to rerun
+matching; Refresh Results alone only reads the previous scan.
+
+A missing match can also mean missing issue metadata or a title/year mismatch in
+an existing series. Search shows already-added series; refresh that volume's
+metadata instead of adding a duplicate. No series is added automatically.

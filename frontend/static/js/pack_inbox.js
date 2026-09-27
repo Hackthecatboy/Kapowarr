@@ -30,6 +30,16 @@ usingApiKey().then(apiKey => {
             file.textContent = item.relative_path;
             const info = document.createElement('td');
             info.textContent = `${item.status}: ${item.message}`;
+            if (item.series_query) {
+                const action = document.createElement('p');
+                const add = document.createElement('a');
+                add.href = `${url_base}/add?q=${encodeURIComponent(item.series_query)}`;
+                add.target = '_blank'; add.rel = 'noopener';
+                add.textContent = 'Find / Add Series';
+                add.className = 'inbox-add-series';
+                action.append(add, ' — opens series search in a new tab. Choose the correct series, then return and Save Folder & Scan.');
+                info.append(action);
+            }
             if (item.destination) {
                 const destination = document.createElement('p');
                 destination.textContent = 'Library copy: ' + item.destination;

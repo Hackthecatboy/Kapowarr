@@ -14,3 +14,5 @@
 #pack-download-form input { display: block; width: min(50rem, 100%); padding: .6rem; }
 #pack-download-jobs article { padding: .75rem; margin-block: .75rem; border: 1px solid var(--border-color); overflow-wrap: anywhere; }
 #pack-download-jobs button { padding: .5rem; background: var(--accent-color); color: var(--nav-background-color); }
+
+.inbox-add-series { text-decoration: underline; font-weight: bold; }

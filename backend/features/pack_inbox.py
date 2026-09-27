@@ -92,6 +92,11 @@ def classify(name):
 def listing():
     folder = Settings().sv.pack_inbox_folder
     rows = get_db().execute('SELECT token,relative_path,status,message,destination FROM pack_inbox WHERE root=? ORDER BY relative_path', (folder,)).fetchalldict()
+    for row in rows:
+        if row['status'] == 'review' and row['message'] == 'No library match':
+            data = extract_filename_data(Path(row['relative_path']).name,
+                                         assume_volume_number=False, fix_year=True)
+            row['series_query'] = data['series']
     return dict(folder=folder, items=rows)
 
 
@@ -135,7 +140,7 @@ def scan(folder):
                 size, mtime = stat.st_size, str(stat.st_mtime_ns)
                 if source.suffix.lower() not in COMICS:
                     message = 'Outer archive: extract to a completed folder before scanning'
-                elif stat.st_size == 0 or time() - stat.st_mtime < 60:
+                elif stat.st_size == 0 or time() - stat.st_mtime < 30:
                     message = 'Empty or recently modified file; wait until completed, then scan again'
                 else:
                     volume, ids, message = classify(source.name)
