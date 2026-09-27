@@ -94,3 +94,12 @@ Validate with two expendable files of different contents/extensions linked to th
 same issue: ensure no keeper is preselected, cancellation changes nothing, and
 confirmation removes only the selected edition. A file covering an additional
 issue must be refused unless the retained file covers that issue too.
+
+## Leftover download archives
+
+Successful ZIP-to-folder conversion already removes the source ZIP after scanning
+and renaming the extracted files. Conversion errors can leave it behind alongside
+partially imported comics; inspect System → Logs for `Conversion failed for` and
+the archive path before retrying. Extraction-only results are now returned and
+rescanned even when the extracted comics need no further format conversion.
+This does not sweep old ZIPs or delete external torrent/client originals.

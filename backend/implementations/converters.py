@@ -141,7 +141,15 @@ class ProposedConversion:
             "Converting file from %s to %s: %s",
             self.source_format, self.target_format, self.filepath
         )
-        return self.converter(self.filepath)
+        try:
+            return self.converter(self.filepath)
+        except Exception:
+            LOGGER.exception(
+                'Conversion failed for %s (%s to %s); source archive may remain. '
+                'Inspect imported files before retrying.',
+                self.filepath, self.source_format, self.target_format
+            )
+            raise
 
 
 class ConvertersManager:

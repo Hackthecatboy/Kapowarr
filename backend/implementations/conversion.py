@@ -118,27 +118,38 @@ def mass_convert(
         List[str]: The new filenames, only of files that have been be converted.
     """
     planned_conversions: List[ProposedConversion] = []
+    extracted_files: List[str] = []
     for proposed_convertion in _get_convertable_files(
         volume_id, issue_id, filepath_filter
     ):
         if proposed_convertion.target_format == 'folder':
             resulting_files = proposed_convertion.perform_conversion()
+            if proposed_convertion.filepath in resulting_files:
+                # Extraction declined: retain the original record and archive.
+                continue
             FilesDB.delete_filepath(proposed_convertion.filepath)
             for filepath in resulting_files:
                 sub_conversion = ConvertersManager.select_converter(filepath)
                 if sub_conversion is not None:
                     planned_conversions.append(sub_conversion)
+                else:
+                    extracted_files.append(filepath)
 
         else:
             planned_conversions.append(proposed_convertion)
 
     total_count = len(planned_conversions)
     if not total_count:
-        return []
+        if extracted_files:
+            scan_files(volume_id, filepath_filter=extracted_files,
+                       update_websocket=update_websocket_files)
+            if process_individual_files:
+                mass_process_files(volume_id)
+        return extracted_files
 
     # Commit changes because new connections are opened in the processes
     commit()
-    result = []
+    result = extracted_files.copy()
     with PortablePool(max_processes=total_count) as pool:
         if update_websocket_progress:
             ws = WebSocket()
