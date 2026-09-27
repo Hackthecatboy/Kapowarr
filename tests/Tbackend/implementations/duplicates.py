@@ -74,6 +74,68 @@ class DuplicateReview(unittest.TestCase):
         self.assertTrue(result['exact'][0]['same_physical_file'])
         self.assertTrue(a.exists() and b.exists())
 
+    def duplicate_pair(self):
+        a=self.file(1,'a.cbz',b'abc')
+        b=self.file(2,'b (1).cbz',b'abc')
+        self.db.commit()
+        token=duplicates.scan()['exact'][0]['token']
+        return a,b,token
+
+    def test_confirmed_deletion_keeps_copy_and_issue_binding(self):
+        a,b,token=self.duplicate_pair()
+        result=duplicates.delete_selected(token,1,[2],True)
+        self.assertEqual(result['deleted'],[str(b)])
+        self.assertEqual(result['errors'],[])
+        self.assertEqual(a.read_bytes(),b'abc')
+        self.assertFalse(b.exists())
+        self.assertEqual([tuple(r) for r in self.db.execute('SELECT file_id,issue_id FROM issues_files')],[(1,1)])
+        from backend.base.custom_exceptions import InvalidKeyValue
+        with self.assertRaises(InvalidKeyValue):
+            duplicates.delete_selected(token,1,[2],True)
+
+    def test_changed_files_and_missing_confirmation_prevent_deletion(self):
+        from backend.base.custom_exceptions import InvalidKeyValue
+        a,b,token=self.duplicate_pair()
+        for keep, selected, confirm in [(1,[1,2],True),(1,[2],False),(1,[999],True)]:
+            with self.assertRaises(InvalidKeyValue):
+                duplicates.delete_selected(token,keep,selected,confirm)
+        a.write_bytes(b'xyz')
+        with self.assertRaises(InvalidKeyValue):
+            duplicates.delete_selected(token,1,[2],True)
+        self.assertTrue(b.exists())
+
+    def test_additional_issue_coverage_is_retained(self):
+        from backend.base.custom_exceptions import InvalidKeyValue
+        a,b,token=self.duplicate_pair()
+        self.db.execute("INSERT INTO issues(id,volume_id,comicvine_id,issue_number,calculated_issue_number) VALUES(2,1,2,'2',2)")
+        self.db.execute('INSERT INTO issues_files VALUES(2,2,0)')
+        self.db.commit()
+        with self.assertRaises(InvalidKeyValue):
+            duplicates.delete_selected(token,1,[2],True)
+        self.assertTrue(a.exists() and b.exists())
+
+    def test_expired_preview_and_active_downloads_prevent_deletion(self):
+        from backend.base.custom_exceptions import InvalidKeyValue
+        a,b,token=self.duplicate_pair()
+        created,files=duplicates._PREVIEWS[token]
+        with patch.object(duplicates,'monotonic',return_value=created+duplicates.PREVIEW_SECONDS+1):
+            with self.assertRaises(InvalidKeyValue):
+                duplicates.delete_selected(token,1,[2],True)
+        self.db.execute("INSERT INTO download_queue(id,volume_id,client_type,download_link,source_type,source_name) VALUES(1,1,'usenet','test','Usenet','test')")
+        self.db.commit()
+        with self.assertRaises(InvalidKeyValue):
+            duplicates.delete_selected(token,1,[2],True)
+        self.assertTrue(a.exists() and b.exists())
+
+    def test_failed_unlink_preserves_records_and_reports_failure(self):
+        a,b,token=self.duplicate_pair()
+        with patch.object(Path,'unlink',side_effect=PermissionError('Read-only mount')):
+            result=duplicates.delete_selected(token,1,[2],True)
+        self.assertFalse(result['deleted'])
+        self.assertEqual(len(result['errors']),1)
+        self.assertEqual(self.db.execute('SELECT count(*) FROM files').fetchone()[0],2)
+        self.assertTrue(a.exists() and b.exists())
+
     def test_scan_endpoint_requires_auth(self):
         from flask import Flask
         from frontend.api import api
@@ -83,6 +145,8 @@ class DuplicateReview(unittest.TestCase):
         with patch('frontend.api.Settings',return_value=SimpleNamespace(sv=SimpleNamespace(api_key='test'))):
             client=app.test_client()
             self.assertEqual(client.post('/api/duplicates/scan',json={}).status_code,401)
+            self.assertEqual(client.post('/api/duplicates/delete',json={}).status_code,401)
+            self.assertEqual(client.post('/api/duplicates/delete?api_key=test',json={}).status_code,400)
             response=client.post('/api/duplicates/scan?api_key=test',json={'volume_id':1})
             self.assertEqual(response.status_code,200)
             self.assertEqual(client.post('/api/duplicates/scan?api_key=test',json={'volume_id':True}).status_code,400)

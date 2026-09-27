@@ -4,3 +4,8 @@
 #duplicates-form button { padding: .6rem 1rem; background: var(--accent-color); color: var(--nav-background-color); border-radius: 4px; }
 #duplicates-results section { padding: 1rem; margin-block: 1rem; border: 1px solid var(--border-color); }
 #duplicates-results li { margin: .5rem 0 .5rem 1.5rem; overflow-wrap: anywhere; }
+
+#duplicates-results select { max-width: 100%; padding: .5rem; }
+.duplicate-selection label { display: block; overflow-wrap: anywhere; margin-block: .65rem; }
+#duplicates-results button { padding: .6rem 1rem; background: var(--accent-color); color: var(--nav-background-color); }
+#duplicates-results button:disabled { opacity: .5; }

@@ -60,7 +60,9 @@ also avoids interfering with torrent originals that may still be seeding.
 
 ## Source order and fallback
 
-Settings → Download → **Source Order** controls source groups. Choose
+Settings → Download → Import and Source Preferences → **Source Order** controls source groups.
+The Indexers page also links directly to this section. This orders protocol groups,
+not individual indexers within the same group. Choose
 **Usenet → Torrents → Direct downloads** to make GetComics a fallback, or choose
 an order beginning with Direct downloads to prefer it. Indexers within a group
 have equal source priority. The default, **Search all sources together**, keeps

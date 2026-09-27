@@ -17,7 +17,7 @@ Volumes → **Duplicate Files** scans indexed library comic archives and PDFs:
   packs; this is not an instruction to delete them.
 - Missing, changed, symlinked and inaccessible files are reported for review.
 
-Nothing is deleted, moved or renamed by this scan. It does not inspect archive
+Scanning does not delete, move or rename files. Exact groups now offer explicit deletion after review. It does not inspect archive
 pages, so differently compressed archives of the same pages are not called exact
 copies. A `(1)` suffix means a naming collision, not proof of identical contents.
 Scan the volume in Kapowarr first if you have added files outside the application;
@@ -27,8 +27,7 @@ Scanning is on demand and bounded to 20,000 indexed associations, 2 GiB of hashi
 and a 20-second hashing budget. Limits produce an incomplete report, not an
 all-clear. Narrow large scans using the volume ID from `/volumes/<id>`. No hashes
 are cached, so subsequent scans recheck current files. Results describe that scan;
-files can change afterward. Manual cleanup and automatic import deduplication are
-not implemented by this feature.
+files can change afterward. Automatic import deduplication is not implemented by this feature.
 
 ## Development validation
 
@@ -44,3 +43,30 @@ not implemented by this feature.
    should update roughly every five seconds; Usenet speed is an estimate between
    samples. Refresh/reconnect the page and confirm tracking continues without
    duplicate rows. Completion delay and held imports may remain at 100% deliberately.
+
+## Delete verified duplicates
+
+For an exact group, select **Copy to keep**, check individual copies to remove,
+and choose **Delete Selected Duplicates**. The confirmation lists the paths to
+remove and the path to retain. No deletion boxes are checked by default. This is
+permanent deletion of library paths, not a recycle bin operation.
+
+Kapowarr rehashes the retained and selected files, checks their paths and current
+issue bindings, and refuses stale/changed files, symlinks, cross-volume removal,
+or loss of issue/metadata coverage. A volume with queued downloads or an ongoing
+Pack Inbox import must finish or resolve those entries first. Differing or
+unverified same-issue files remain review-only. At least the chosen keeper remains;
+no client download folders are targeted. Deleting a hard link removes that path,
+not the retained path. Multiple linked copies may require a fresh scan after their
+filesystem metadata changes.
+
+Previews expire after 15 minutes or a server restart. After deletion or any error,
+scan again. Filesystem deletion and database cleanup cannot form one atomic
+transaction: if a filesystem/database error occurs, processing stops and reports
+partial results; rescan the volume to reconcile missing file records if needed.
+
+Test first with an expendable identical copy in the development library: confirm
+only the selected path and its database binding disappear, the keeper still opens,
+and its issue remains linked. Then modify a copy after scanning and confirm deletion
+is rejected until a new scan. No existing library files are deleted during development
+or automated testing; tests use temporary fixtures.

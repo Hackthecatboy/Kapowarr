@@ -5,9 +5,9 @@
 {% block main %}
 <main id="duplicates-page"><div class="settings-container">
 <h2>Duplicate Files</h2>
-<p>Review indexed library files without changing them. Exact copies are compared by SHA-256; different or unverified files for the same issue are listed separately. A filename ending in “(1)” alone does not prove a duplicate. Rescan a volume first if files were added outside Kapowarr.</p>
+<p>Scan indexed library files, then review exact copies before deleting any. Exact copies are compared by SHA-256; different or unverified files for the same issue are listed separately. A filename ending in “(1)” alone does not prove a duplicate. Rescan a volume first if files were added outside Kapowarr.</p>
 <form id="duplicates-form"><label for="duplicates-volume">Volume ID (optional)</label> <input id="duplicates-volume" type="number" min="1" step="1" placeholder="All library volumes"><button type="submit">Scan for Duplicates</button></form>
-<p>Find the volume ID in its Kapowarr page address. Large scans are limited; select one volume if the report is incomplete. Nothing is automatically deleted.</p>
+<p>Find the volume ID in its Kapowarr page address. Large scans are limited; select one volume if the report is incomplete. For exact groups, choose a copy to keep, check the copies to delete, then confirm. Nothing is automatically selected for deletion. Different or unverified same-issue files remain review-only.</p>
 <p id="duplicates-status" role="status"></p>
 <div id="duplicates-results"></div>
 </div></main>
