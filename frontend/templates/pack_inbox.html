@@ -15,7 +15,7 @@
 <input id="pack-query" value="weekly pack" required minlength="2" maxlength="150">
 <div class="inbox-actions"><button type="submit">Search Past Packs</button><button type="button" id="pack-older" disabled>Older Results</button></div>
 </form>
-<div id="pack-history-results"></div>
+<details id="pack-search-results"><summary>Past search results</summary><div id="pack-history-results" class="pack-scroll-list"></div></details>
 <h3>Subscribe to new dated releases</h3>
 <p>Checks once on your selected weekday, using the server/container timezone, from today's release date onward. Match one download label and service; ambiguous links require review. Downloads go to the writable folder below. Importing remains manual.</p>
 <label for="pack-link-filter">Download label contains (for example Marvel)</label>
@@ -29,10 +29,10 @@
 <div class="inbox-actions"><button id="pack-subscribe" type="button">Subscribe Using These Settings</button><button id="pack-check" type="button">Check Subscriptions Now</button></div>
 <p id="pack-discovery-status" role="status"></p>
 <div id="pack-subscriptions"></div>
-<div id="pack-subscription-releases"></div>
+<details><summary>Discovered releases <span id="pack-release-count"></span></summary><div id="pack-subscription-releases" class="pack-scroll-list"></div></details>
 </details>
 <section id="pack-download-section">
-<h3>Download a GetComics pack</h3>
+<details id="pack-download-controls"><summary>Download a GetComics pack</summary>
 <p>Preview a weekly-pack article and choose one download link. Download into a writable inbox folder; ZIP packs are extracted for review. Mega and torrent links are not supported here yet. RAR/7z and multipart packs need manual extraction. Nothing is automatically imported.</p>
 <form id="pack-download-form">
 <label for="pack-article">GetComics article URL</label>
@@ -41,18 +41,23 @@
 <input id="pack-download-folder" type="text" required placeholder="/pack-inbox">
 <div class="inbox-actions"><button type="submit">Preview Download Links</button><button id="pack-jobs-refresh" type="button">Refresh Downloads</button></div>
 </form>
-<p id="pack-download-status" role="status"></p>
 <div id="pack-download-choices" class="inbox-actions"></div>
+</details>
+<p id="pack-download-status" role="status"></p>
+<h3>Downloaded packs</h3>
 <div id="pack-download-jobs"></div>
+<details id="pack-finished"><summary>Finished packs <span id="pack-finished-count"></span></summary><div id="pack-finished-jobs" class="pack-scroll-list"></div></details>
 </section>
-<p>Scan completed mixed-series or weekly folders for individual CBZ, CBR, CB7 and PDF files. Matches are copied to existing library series; Imported sources from Kapowarr-downloaded packs are deleted after verification; external inbox originals stay untouched. Outer ZIP/RAR/7z archives must be extracted first. Files modified in the last 30 seconds wait for another scan.</p>
+<h3 id="pack-review-heading">Review files</h3>
+<details><summary>Import help</summary><p>Scan completed mixed-series or weekly folders for individual CBZ, CBR, CB7 and PDF files. Matches are copied to existing library series; Imported sources from Kapowarr-downloaded packs are deleted after verification; external inbox originals stay untouched. Outer ZIP/RAR/7z archives must be extracted first. Files modified in the last 30 seconds wait for another scan.</p><p>Use Find / Add Series to open series search in a new tab. Add the correct series, then return and scan again. Files without issue numbers still need manual review.</p></details>
 <form id="pack-inbox-form">
 <label for="inbox-folder">Completed pack folder inside Kapowarr</label>
 <input id="inbox-folder" type="text" required placeholder="/pack-inbox">
-<div class="inbox-actions"><button type="submit">Save Folder &amp; Scan</button><button id="inbox-refresh" type="button">Refresh Results</button><button id="inbox-select" type="button">Select First 100 Matches</button><button id="inbox-import" type="button" disabled>Import Selected Copies</button></div>
+<div class="inbox-actions"><button type="submit">Save Folder &amp; Scan</button><button id="inbox-refresh" type="button">Refresh Results</button><button id="inbox-select" type="button">Select Visible Matches</button><button id="inbox-import" type="button" disabled>Import Selected Copies</button></div>
 </form>
 <p id="inbox-status" role="status"></p>
 <p>Only unique missing-issue matches can be selected. Unmatched, ambiguous and partially owned files remain for review. This scan does not add new series or replace existing comics. Check that downloads are fully completed before importing.</p>
+<div class="inbox-actions"><label>Show <select id="inbox-filter"><option value="pending">Needs attention</option><option value="matched">Matched</option><option value="review">Review / Held</option><option value="imported">Imported</option><option value="all">All files</option></select></label><label>Search files <input id="inbox-search" type="search" placeholder="Title or filename"></label></div>
 <div class="inbox-table"><table><thead><tr><th>Select</th><th>File</th><th>Status / Match</th></tr></thead><tbody id="inbox-results"></tbody></table></div>
 </div></main>
 {% endblock %}

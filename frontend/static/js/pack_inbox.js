@@ -5,19 +5,37 @@ usingApiKey().then(apiKey => {
     const status = document.querySelector('#inbox-status');
     const importButton = document.querySelector('#inbox-import');
     let busy = false;
-    const selected = () => [...rows.querySelectorAll('input:checked')].map(input => input.value);
+    const selected = () => [...rows.querySelectorAll('tr:not([hidden]) input:checked')].map(input => input.value);
     function controls() {
         form.querySelectorAll('button,input').forEach(el => el.disabled = busy);
         rows.querySelectorAll('input,button').forEach(el => el.disabled = busy);
         importButton.textContent = `Import Selected Copies (${selected().length})`;
         importButton.disabled = busy || !selected().length || selected().length > 100;
     }
+    function filterRows() {
+        const mode = document.querySelector('#inbox-filter').value;
+        const query = document.querySelector('#inbox-search').value.trim().toLocaleLowerCase();
+        for (const row of rows.children) {
+            const state = row.dataset.status;
+            const visible = (mode === 'all' || (mode === 'pending' && !['imported', 'discarded'].includes(state))
+                || (mode === 'review' && !['matched', 'imported', 'discarded'].includes(state)) || mode === state)
+                && row.dataset.path.toLocaleLowerCase().includes(query);
+            row.hidden = !visible;
+            if (!visible) row.querySelectorAll('input').forEach(input => input.checked = false);
+        }
+        const visible = [...rows.children].filter(row => !row.hidden).length;
+        status.textContent = `${visible} of ${rows.children.length} files shown. ${rows.querySelectorAll('[data-status="matched"]').length} matched. Select up to 100 to import.`;
+        controls();
+    }
+    document.querySelector('#inbox-filter').onchange = filterRows;
+    document.querySelector('#inbox-search').oninput = filterRows;
     function render(data) {
         folder.value = data.folder;
         if (!packFolder.value) packFolder.value = data.folder;
         rows.replaceChildren();
         for (const item of data.items) {
             const row = document.createElement('tr');
+            row.dataset.status = item.status; row.dataset.path = item.relative_path;
             const selection = document.createElement('td');
             if (item.status === 'matched') {
                 const input = document.createElement('input');
@@ -27,7 +45,8 @@ usingApiKey().then(apiKey => {
                 selection.appendChild(input);
             }
             const file = document.createElement('td');
-            file.textContent = item.relative_path;
+            file.textContent = item.relative_path.split('/').pop();
+            file.title = item.relative_path;
             const info = document.createElement('td');
             info.textContent = `${item.status}: ${item.message}`;
             if (item.can_cleanup) {
@@ -44,17 +63,18 @@ usingApiKey().then(apiKey => {
                 add.target = '_blank'; add.rel = 'noopener';
                 add.textContent = 'Find / Add Series';
                 add.className = 'inbox-add-series';
-                action.append(add, ' — opens series search in a new tab. Choose the correct series, then return and Save Folder & Scan.');
+                action.append(add);
                 info.append(action);
             }
             if (item.destination) {
-                const destination = document.createElement('p');
-                destination.textContent = 'Library copy: ' + item.destination;
+                const destination = document.createElement('details');
+                const summary = document.createElement('summary'); summary.textContent = 'Library copy';
+                destination.append(summary, item.destination);
                 info.appendChild(destination);
             }
             row.append(selection, file, info); rows.appendChild(row);
         }
-        status.textContent = `${data.items.length} files. Select up to 100 matched files to import. Held or interrupted copies require review before any further action.`;
+        filterRows();
     }
     async function request(action, tokens = null) {
         if (busy) return;
@@ -75,7 +95,7 @@ usingApiKey().then(apiKey => {
     form.onsubmit = event => { event.preventDefault(); if (form.reportValidity()) request('scan'); };
     document.querySelector('#inbox-refresh').onclick = () => request('refresh');
     document.querySelector('#inbox-select').onclick = () => {
-        [...rows.querySelectorAll('input')].forEach((input, index) => input.checked = index < 100);
+        [...rows.querySelectorAll('tr:not([hidden]) input')].forEach((input, index) => input.checked = index < 100);
         controls();
     };
     importButton.onclick = () => request('import');
@@ -90,15 +110,21 @@ usingApiKey().then(apiKey => {
         try { const body = await error.json(); if (body.error === 'InvalidKeyValue') message = String(body.result.value); } catch (_) {}
         packStatus.textContent = message;
     }
+    const jobOpen = new Map();
     async function refreshJobs() {
         try {
             const data = await fetchAPI('/pack-downloads', apiKey);
             jobs.replaceChildren();
+            const finishedJobs = document.querySelector('#pack-finished-jobs'); finishedJobs.replaceChildren();
+            document.querySelector('#pack-finished-count').textContent = `(${data.result.filter(job => job.status === 'finished').length})`;
             for (const job of data.result) {
                 if (!packFolder.value || packFolder.value === job.folder || packFolder.value.startsWith(job.folder + '/')) packFolder.value = job.root;
-                const row = document.createElement('article');
-                const title = document.createElement('strong');
-                title.textContent = job.title;
+                const row = document.createElement('details');
+                row.className = 'pack-job';
+                row.open = jobOpen.get(job.id) ?? (job.status !== 'finished');
+                row.ontoggle = () => { if (row.isConnected) jobOpen.set(job.id, row.open); };
+                const title = document.createElement('summary');
+                title.textContent = `${job.title} — ${job.status}`;
                 const info = document.createElement('p');
                 info.textContent = `${job.status}: ${(job.received / 1024 / 1024).toFixed(1)} MiB${job.total ? ' / ' + (job.total / 1024 / 1024).toFixed(1) + ' MiB' : ''}. ${job.message}`;
                 const path = document.createElement('p');
@@ -107,7 +133,7 @@ usingApiKey().then(apiKey => {
                 if (job.status === 'ready') {
                     const review = document.createElement('button');
                     review.type = 'button'; review.textContent = 'Scan Pack for Review';
-                    review.onclick = () => { if (!busy) { folder.value = job.folder + '/ready'; request('scan'); } };
+                    review.onclick = () => { if (!busy) { folder.value = job.folder + '/ready'; request('scan'); document.querySelector('#pack-review-heading').scrollIntoView({block: 'start'}); } };
                     row.append(review);
                 }
                 if (job.status === 'ready' || job.status === 'held') {
@@ -128,7 +154,7 @@ usingApiKey().then(apiKey => {
                     };
                     row.append(finish);
                 }
-                jobs.append(row);
+                (job.status === 'finished' ? finishedJobs : jobs).append(row);
             }
         } catch (error) { await packError(error); }
     }
@@ -170,6 +196,7 @@ usingApiKey().then(apiKey => {
         return (await (await sendAPI('POST', `/pack-subscriptions/${action}`, apiKey, {}, data)).json()).result;
     }
     function previewArticle(article) {
+        document.querySelector('#pack-download-controls').open = true;
         document.querySelector('#pack-article').value = article;
         packForm.requestSubmit();
         packForm.scrollIntoView({block: 'start'});
@@ -191,6 +218,7 @@ usingApiKey().then(apiKey => {
             const result = await discoveryPost('search', {query: historyQuery, page: historyPage});
             const rows = document.querySelector('#pack-history-results');
             if (reset) rows.replaceChildren();
+            document.querySelector('#pack-search-results').open = true;
             result.articles.forEach(article => rows.append(articleRow(article.title, article.url)));
             document.querySelector('#pack-older').disabled = !result.has_more || historyPage >= 100;
             historyPage += 1;
@@ -226,7 +254,15 @@ usingApiKey().then(apiKey => {
                 rows.append(row);
             }
             const releases = document.querySelector('#pack-subscription-releases'); releases.replaceChildren();
-            data.releases.forEach(release => releases.append(articleRow(release.title, release.article, `${release.status}: ${release.message}`)));
+            // The same weekly article can be found by several subscriptions.
+            const groups = new Map();
+            for (const release of data.releases) {
+                if (!groups.has(release.article)) groups.set(release.article, {title: release.title, states: new Set()});
+                groups.get(release.article).states.add(`${release.status}: ${release.message}`);
+            }
+            document.querySelector('#pack-release-count').textContent = `(${groups.size})`;
+            [...groups.entries()].sort((a, b) => b[1].title.localeCompare(a[1].title, undefined, {numeric: true}))
+                .forEach(([article, group]) => releases.append(articleRow(group.title, article, [...group.states].join('; '))));
         } catch (_) { discoveryStatus.textContent = 'Could not load subscriptions.'; }
     }
     document.querySelector('#pack-discovery-form').onsubmit = event => { event.preventDefault(); searchPacks(true); };

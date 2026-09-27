@@ -25,3 +25,14 @@
 #pack-discovery-section input, #pack-discovery-section select { padding: .5rem; max-width: 100%; }
 #pack-discovery-section button { padding: .5rem; background: var(--accent-color); color: var(--nav-background-color); }
 #pack-download-jobs button + button { margin-left: .75rem; }
+
+#pack-inbox-page summary { cursor: pointer; padding-block: .5rem; font-weight: bold; }
+#pack-inbox-page .pack-scroll-list { max-height: 20rem; overflow-y: auto; padding-inline: .5rem; }
+#pack-inbox-page .pack-scroll-list > p { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+#pack-inbox-page .pack-job { padding: .5rem .75rem; margin-block: .5rem; border: 1px solid var(--border-color); overflow-wrap: anywhere; }
+#pack-inbox-page .pack-job button { padding: .5rem; background: var(--accent-color); color: var(--nav-background-color); }
+#pack-inbox-page .pack-job button + button { margin-left: .75rem; }
+#pack-inbox-page #inbox-results td { padding: .5rem; vertical-align: top; }
+#pack-inbox-page #inbox-results p { margin-block: .35rem; }
+#pack-inbox-page #inbox-results [hidden], #pack-inbox-page #inbox-results tr[hidden] { display: none; }
+#inbox-filter, #inbox-search { padding: .5rem; }

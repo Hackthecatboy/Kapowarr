@@ -223,3 +223,18 @@ Pause/Resume controls stop or resume future checks; they do not cancel an alread
 started download. Imports always require Pack Inbox review. Recurring automatic
 import, automatic retry, and discovering arbitrarily deep history remain outside
 this slice. Live subscription discovery still needs a test against current hosting.
+
+## Keeping the inbox manageable
+
+Finished packs and discovered release history are collapsed by default. Past-pack
+search results scroll within their own panel; repeated discovered articles appear
+once, newest first. Each downloaded pack can be collapsed while working on another.
+Use **Scan Pack for Review** to jump directly to that pack's files.
+
+File review defaults to **Needs attention**, hiding imported and discarded rows.
+Choose **Matched**, **Review / Held**, **Imported**, or **All files**, and use the
+filename search to narrow the list. **Select Visible Matches** selects up to 100
+currently visible matches. Hiding a selected row clears its selection so imports
+only include visible choices. Full source paths are available on filename hover;
+expand **Library copy** to see an imported file's destination. Import instructions
+are collected under **Import help** instead of repeated on every row.
