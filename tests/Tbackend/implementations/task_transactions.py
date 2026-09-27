@@ -57,3 +57,27 @@ class TaskTransactions(unittest.TestCase):
                 patch('backend.features.download_queue.sleep', side_effect=self.write_elsewhere):
             handler.add_multiple([('link', 1, 1, None, False)] * 2)
         self.assertEqual(self.other.execute("SELECT count(*) FROM writes WHERE value='blocklist'").fetchone()[0], 2)
+
+
+class RssSchedule(unittest.TestCase):
+    def test_default_and_upgrade_are_hourly_and_preserve_custom_schedules(self):
+        from backend.features.tasks import TASK_INTERVALS, insert_task_intervals
+        from backend.internals.db_migration import _migrate_hourly_rss_sync
+        db = sqlite3.connect(':memory:')
+        self.addCleanup(db.close)
+        db.execute('CREATE TABLE task_intervals(task_name PRIMARY KEY, schedule, next_run)')
+        self.assertEqual(TASK_INTERVALS['rss_sync'], '0 * * * *')
+        with patch('backend.features.tasks.get_db', side_effect=db.cursor), \
+                patch('backend.features.tasks.get_schedules_next_run', return_value=123):
+            insert_task_intervals()
+        self.assertEqual(db.execute("SELECT schedule FROM task_intervals WHERE task_name='rss_sync'").fetchone()[0], '0 * * * *')
+        with patch('backend.internals.db_migration.get_db', side_effect=db.cursor), \
+                patch('backend.base.helpers.get_schedules_next_run', return_value=456):
+            db.execute("UPDATE task_intervals SET schedule='0,30 * * * *', next_run=1 WHERE task_name='rss_sync'")
+            _migrate_hourly_rss_sync()
+            self.assertEqual(db.execute("SELECT schedule,next_run FROM task_intervals WHERE task_name='rss_sync'").fetchone(), ('0 * * * *', 456))
+            _migrate_hourly_rss_sync()
+            self.assertEqual(db.execute("SELECT next_run FROM task_intervals WHERE task_name='rss_sync'").fetchone()[0], 456)
+            db.execute("UPDATE task_intervals SET schedule='15 */2 * * *', next_run=789 WHERE task_name='rss_sync'")
+            _migrate_hourly_rss_sync()
+            self.assertEqual(db.execute("SELECT schedule,next_run FROM task_intervals WHERE task_name='rss_sync'").fetchone(), ('15 */2 * * *', 789))

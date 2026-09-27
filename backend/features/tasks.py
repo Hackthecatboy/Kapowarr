@@ -33,7 +33,7 @@ TASK_INTERVALS = {
     'update_all': '0 * * * *', # every hour at minute 0
     'backup_db': '0 0 * * 1', # every Monday at 00:00
     'pack_subscriptions': '15 * * * *', # hourly pack discovery
-    'rss_sync': '0,30 * * * *' # every half hour
+    'rss_sync': '0 * * * *' # every hour at minute 0
 }
 
 

@@ -66,6 +66,52 @@ class PackInbox(unittest.TestCase):
     def scan(self):
         return pack_inbox.scan(str(self.inbox))['items']
 
+    def test_scan_and_picker_file_checks_allow_other_database_writers(self):
+        for number in ('1', '01', '001'):
+            self.comic(f'Other Title #{number}.cbz')
+        self.db.commit()
+        path = str(self.base / 'concurrency.db')
+        connection = sqlite3.connect(path)
+        self.addCleanup(connection.close)
+        self.db.backup(connection)
+        connection.row_factory = sqlite3.Row
+        other = sqlite3.connect(path, timeout=0)
+        self.addCleanup(other.close)
+        cursor = connection.cursor(factory=KapowarrCursor)
+        original = pack_inbox.safe_source
+        checks = []
+        def checked_source(*args):
+            other.execute("INSERT OR REPLACE INTO config(key,value) VALUES('concurrency_probe',1)")
+            other.commit()
+            checks.append(args)
+            return original(*args)
+        with patch('backend.features.pack_inbox.get_db', return_value=cursor), \
+                patch('backend.internals.db_models.get_db', return_value=cursor), \
+                patch('backend.features.pack_inbox.safe_source', side_effect=checked_source):
+            result = pack_inbox.scan(str(self.inbox))
+            self.assertGreaterEqual(len(checks), 3)
+            checks.clear()
+            result = pack_inbox.set_match(result['items'][0]['token'], 1, [1])
+            self.assertGreaterEqual(len(checks), 3)
+            self.assertTrue(all(row['status'] == 'matched' for row in result['items']))
+
+    def test_failed_scan_publication_rolls_back_previous_results(self):
+        self.comic('Alpha Comics 001 (2026).cbz')
+        before = self.scan()
+        self.comic('Beta Comics 001 (2026).cbz')
+        original = pack_inbox.PackInboxDB.save_scan
+        writes = []
+        def fail_second(*args):
+            writes.append(args)
+            if len(writes) == 2:
+                raise RuntimeError('Simulated publication failure')
+            return original(*args)
+        with patch.object(pack_inbox.PackInboxDB, 'save_scan', side_effect=fail_second):
+            with self.assertRaises(RuntimeError):
+                self.scan()
+        self.assertFalse(self.db.in_transaction)
+        self.assertEqual(pack_inbox.listing()['items'], before)
+
     def test_scan_invalidates_stale_folder_cache_after_commit(self):
         self.comic('Alpha Comics 001 (2026).cbz')
         self.settings.sv.pack_inbox_folder = '/previous-inbox'

@@ -48,6 +48,10 @@ Refresh results to inspect its state before selecting more files. Scans are
 limited to 2,000 candidate files. Choose a smaller completed weekly
 folder for larger inboxes.
 
+Scans and picker match refreshes complete filesystem checks before opening their
+database write transaction. Results are saved together; a failed scan save rolls
+back to the previous results. Imports still recheck each file before copying.
+
 ## Matching and preservation
 
 Ambiguous matches can be resolved with **Find / Add Series**. Choose the correct

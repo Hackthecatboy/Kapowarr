@@ -1404,3 +1404,16 @@ def _migrate_pack_manual_matches():
     cursor = get_db()
     if 'manual_match' not in {row[1] for row in cursor.execute('PRAGMA table_info(pack_inbox)')}:
         cursor.execute('ALTER TABLE pack_inbox ADD COLUMN manual_match BOOL NOT NULL DEFAULT 0')
+
+
+@DatabaseMigrationHandler.register_handler(60)
+def _migrate_hourly_rss_sync() -> None:
+    """Upgrade the former default while preserving custom RSS schedules."""
+    from backend.base.helpers import get_schedules_next_run
+
+    schedule = '0 * * * *'
+    get_db().execute(
+        "UPDATE task_intervals SET schedule=?, next_run=? "
+        "WHERE task_name='rss_sync' AND schedule='0,30 * * * *'",
+        (schedule, get_schedules_next_run(schedule))
+    )

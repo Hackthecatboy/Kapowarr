@@ -221,3 +221,22 @@ Kapowarr architecture. Complete and verify each slice separately.
    Sixteen tests cover sequential batch imports, interrupted requests, import selection, history, cleanup confirmation, subscriptions,
    download choices, per-file series selection and review-only category discovery. Browser appearance and live integrations still need
    separate validation.
+
+
+## Concurrency and refresh follow-up
+
+1. **Scan write locks (implemented; locally tested):** file checks and matching
+   are staged before writing the scan journal in a short transaction. Picker
+   match refresh uses the same approach. Two-connection SQLite tests verify
+   other writes can proceed during file checks; failed publication rolls back
+   to previous results. Import revalidation remains in place. NAS validation
+   alongside imports/RSS remains pending.
+2. **Shared settings cache (pending):** prevent concurrent readers from caching
+   old settings between an update and its commit outside the Pack Inbox path.
+3. **Subscription edits (pending):** preserve unsaved weekday changes when an
+   already-running polling request returns.
+4. **Pack download polling (pending):** prevent older refresh responses from
+   replacing newer statuses or restoring obsolete action buttons.
+
+RSS sync defaults to hourly at minute 0. Existing installations using the old
+half-hour schedule migrate to hourly; custom schedules are preserved.

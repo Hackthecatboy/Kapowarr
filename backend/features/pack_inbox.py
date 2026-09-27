@@ -27,6 +27,9 @@ COMICS = {'.cbz', '.cbr', '.cb7', '.pdf'}
 ARCHIVES = {'.zip', '.rar', '.7z'}
 TERMINAL = {'imported', 'importing', 'held', 'discarded'}
 
+# Arguments for a staged PackInboxDB.save_scan call.
+ScanUpdate = Tuple[str, str, str, str, str, int, str, Optional[int], str, bool]
+
 
 class InboxItem(TypedDict, total=False):
     """A reviewed file returned to the Pack Inbox page.
@@ -340,6 +343,7 @@ def _refresh_review_matches(token: str, volume_id: int, selected_ids: List[int])
     if selected_data['series'] and isinstance(number, (int, float)) and not selected_data['special_version']:
         numbered = PackInboxDB.range_issues(volume_id, number, number)
         propagate = len(numbered) == 1 and [numbered[0]['id']] == selected_ids
+    updates: List[ScanUpdate] = []
     for item in PackInboxDB.review_rows(str(root)):
         if item['status'] != 'review':
             continue
@@ -372,13 +376,20 @@ def _refresh_review_matches(token: str, volume_id: int, selected_ids: List[int])
             if volume is None:
                 continue
             message = reason or f"{volume['title']} ({volume['year']}) — {len(ids)} issue(s)"
-            PackInboxDB.save_scan(
+            updates.append((
                 str(root), row['relative_path'], row['token'],
                 'owned' if reason else 'matched', message, row['size'],
-                row['mtime'], volume['id'], json.dumps(ids), related)
+                row['mtime'], volume['id'], json.dumps(ids), related))
         except (ValueError, OSError):
             continue
-    get_db().connection.commit()
+    cursor = get_db()
+    try:
+        for update in updates:
+            PackInboxDB.save_scan(*update)
+        cursor.connection.commit()
+    except Exception:
+        cursor.connection.rollback()
+        raise
 
 
 def listing() -> InboxListing:
@@ -436,13 +447,14 @@ def scan(folder: object, *, filename: Optional[str] = None) -> InboxListing:
             if len(paths) > 2000:
                 raise InvalidKeyValue(
                     'folder', 'Choose a smaller completed folder (maximum 2,000 files per scan)')
-        PackInboxDB.mark_sources_unseen(str(root))
+        updates: List[ScanUpdate] = []
+        rebases: List[Tuple[str, str, int]] = []
         for path in sorted(paths):
             relative = str(path.relative_to(root))
             old = PackInboxDB.find_source(os.sep, str(path))
             if old:
                 # Narrowing the inbox to a weekly subfolder must not bypass a hold.
-                PackInboxDB.rebase_source(str(root), relative, old['id'])
+                rebases.append((str(root), relative, old['id']))
                 if old['status'] in TERMINAL:
                     continue
             size, mtime, volume_id, ids = 0, '', None, []
@@ -469,16 +481,26 @@ def scan(folder: object, *, filename: Optional[str] = None) -> InboxListing:
                             status = 'owned'
             except (ValueError, OSError) as error:
                 message = str(error)
-            PackInboxDB.save_scan(
+            updates.append((
                 str(root), relative, uuid4().hex, status, message,
                 size, mtime, volume_id, json.dumps(ids), manual
-            )
-        # Publish the folder with the completed scan. A concurrent reader can
-        # refill the settings cache from the old committed value during update,
-        # so invalidate it again only after the new value becomes visible.
-        Settings().update({'pack_inbox_folder': str(root)})
-        cursor.connection.commit()
-        Settings().clear_cache()
+            ))
+        # File I/O and matching finish before acquiring a database write lock.
+        # The inbox lock still prevents competing scans/imports in this process.
+        try:
+            PackInboxDB.mark_sources_unseen(str(root))
+            for rebase in rebases:
+                PackInboxDB.rebase_source(*rebase)
+            for update in updates:
+                PackInboxDB.save_scan(*update)
+            Settings().update({'pack_inbox_folder': str(root)})
+            cursor.connection.commit()
+        except Exception:
+            cursor.connection.rollback()
+            raise
+        finally:
+            # Concurrent readers may have cached the old committed setting.
+            Settings().clear_cache()
         return listing()
 
 
