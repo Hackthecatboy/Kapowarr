@@ -8,6 +8,20 @@
 {% block main %}
 <main id="pack-inbox-page"><div class="settings-container">
 <h2>Pack Inbox</h2>
+<section id="pack-download-section">
+<h3>Download a GetComics pack</h3>
+<p>Preview a weekly-pack article and choose one download link. Download into a writable inbox folder; ZIP packs are extracted for review. Mega and torrent links are not supported here yet. RAR/7z and multipart packs need manual extraction. Nothing is automatically imported.</p>
+<form id="pack-download-form">
+<label for="pack-article">GetComics article URL</label>
+<input id="pack-article" type="url" required placeholder="https://getcomics.org/…">
+<label for="pack-download-folder">Writable inbox folder</label>
+<input id="pack-download-folder" type="text" required placeholder="/pack-inbox">
+<div class="inbox-actions"><button type="submit">Preview Download Links</button><button id="pack-jobs-refresh" type="button">Refresh Downloads</button></div>
+</form>
+<p id="pack-download-status" role="status"></p>
+<div id="pack-download-choices" class="inbox-actions"></div>
+<div id="pack-download-jobs"></div>
+</section>
 <p>Scan completed mixed-series or weekly folders for individual CBZ, CBR, CB7 and PDF files. Matches are copied to existing library series; originals stay untouched. Outer ZIP/RAR/7z archives must be extracted first. Files modified in the last minute wait for another scan.</p>
 <form id="pack-inbox-form">
 <label for="inbox-folder">Completed pack folder inside Kapowarr</label>

@@ -226,6 +226,24 @@ class BaseDirectDownload(Download):
         self._files = [self._build_filename(response)]
         return
 
+    @classmethod
+    def pack_client(cls, link: str):
+        """Resolve a pack through this HTTP provider without a volume or queue job.
+
+        The caller owns the returned session and response lifecycle. This is
+        limited to BaseDirectDownload providers, not Mega or external clients.
+        """
+        client = cls.__new__(cls)
+        client._download_link = link
+        client._supports_range_header = False
+        client._ssn = Session()
+        try:
+            client._pure_link = client._convert_to_pure_link()
+        except Exception:
+            client._ssn.close()
+            raise
+        return client
+
     def _convert_to_pure_link(self) -> str:
         return self.download_link
 

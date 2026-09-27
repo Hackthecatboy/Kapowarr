@@ -82,9 +82,10 @@ mount aliases and broader recurring-scan recovery remain part of stage 2.
 
 ## Scope and verification
 
-Stage 1 is a manually triggered folder inbox with reviewed import. Scheduled
-scans, recurring weekly-pack indexer rules, automatic download/ingestion, archive
-unpacking and automatic creation of unknown series are not implemented.
+Stage 1 is a manually triggered folder inbox with reviewed import. An explicit
+GetComics article download flow is now available as described below. Scheduled
+scans, recurring weekly-pack rules, automatic ingestion and automatic creation of
+unknown series remain future work.
 
 Filesystem/database tests cover multi-series routing, checksum-preserving copies,
 owned/ambiguous/unmatched files, stale previews, changed sources, symlinks, folder
@@ -102,3 +103,44 @@ held for review and do not replay the copy automatically.
 Use Volumes → Duplicate Files to review indexed library duplicates. This does not
 change the inbox's rules for already-owned issues or add content deduplication to
 recurring pack scans. See [duplicate review](duplicate-files.md).
+
+## Download a GetComics weekly pack
+
+In **Volumes → Pack Inbox → Download a GetComics pack**:
+
+1. Paste the HTTPS `getcomics.org` weekly-pack article URL and enter an existing
+   writable inbox folder, such as `/pack-inbox`. For downloading, change the mount
+   example above to `/volume1/Media/downloads/pack-inbox:/pack-inbox` (remove `:ro`).
+   Library and inbox roots must remain separate.
+2. Select **Preview Download Links**. Pick one pack link/mirror, using its group
+   and service label. An article may contain alternatives or separate parts;
+   do not select every mirror. The preview expires after 15 minutes.
+3. Watch progress below the form. This separate pack job has no volume assignment
+   and does not appear in the single-series download queue. One pack downloads
+   at a time. The same article/link cannot be submitted twice, even after restart.
+4. ZIP packs extract into `Pack-<job-id>/ready`, retaining `payload.archive` beside
+   that folder. Comic archives within the ZIP are kept intact. After completion,
+   wait one minute, select **Scan Pack for Review**, and import reviewed matches
+   using the existing inbox controls. No files are automatically imported.
+
+The first slice reuses GetComics link discovery/resolution and HTTP download
+providers (GetComics direct links, MediaFire, WeTransfer and Pixeldrain). Mega and
+BitTorrent pack jobs are not supported yet. RAR, 7z, multipart and other unsupported
+payloads are retained for manual extraction into a separate completed folder.
+Archives are not deleted after import.
+
+Jobs survive restarts as held records, without automatic re-download. Partial
+payloads and failed extractions stay in their job folder; inspect logs before
+manual recovery. Inbox scans exclude unfinished/held managed pack folders, including
+when scanning a parent folder. Extract or copy reviewed content into a separate
+completed inbox folder to recover it. Automatic retry and job removal are not yet
+provided. Link deduplication does not identify alternate mirrors of the same pack.
+
+Downloads/extraction are limited to 50 GiB and ZIPs to 2,000 entries. Unsafe ZIP
+paths, symlinks, duplicate entries and encrypted entries are rejected. Traversal
+checks happen before extraction, and existing extraction folders are never reused.
+
+Fixture tests cover article validation, authenticated endpoints, persisted job
+submission, duplicate suppression, interrupted jobs, ZIP extraction, unsafe paths,
+truncated downloads, source preservation and exclusion of unfinished scans. Live
+GetComics hosting behavior still needs verification with a small test pack.

@@ -22,6 +22,7 @@ from backend.base.definitions import (BlocklistReason, BlocklistReasonID,
 from backend.base.files import folder_path
 from backend.base.helpers import hash_credential
 from backend.base.logging import LOGGER, get_log_file_contents, get_recent_logs
+from backend.features import pack_downloads
 from backend.features.duplicates import scan as scan_duplicates, delete_selected as delete_duplicates
 from backend.features.download_queue import (DownloadHandler,
                                              delete_download_history,
@@ -822,6 +823,27 @@ def api_duplicates_delete():
 @auth
 def api_pack_inbox():
     return return_api(pack_inbox.listing())
+
+
+@api.route('/pack-downloads', methods=['GET'])
+@error_handler
+@auth
+def api_pack_downloads():
+    return return_api(pack_downloads.listing())
+
+
+@api.route('/pack-downloads/<action>', methods=['POST'])
+@error_handler
+@auth
+def api_pack_download_action(action):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise InvalidKeyValue('body', 'Expected an object')
+    if action == 'preview':
+        return return_api(pack_downloads.preview(data.get('url')))
+    if action == 'download':
+        return return_api(pack_downloads.start(data.get('token'), data.get('folder')))
+    raise InvalidKeyValue('action', action)
 
 
 @api.route('/pack-inbox/<action>', methods=['POST'])

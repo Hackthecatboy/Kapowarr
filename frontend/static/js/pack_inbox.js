@@ -14,6 +14,7 @@ usingApiKey().then(apiKey => {
     }
     function render(data) {
         folder.value = data.folder;
+        if (!packFolder.value) packFolder.value = data.folder;
         rows.replaceChildren();
         for (const item of data.items) {
             const row = document.createElement('tr');
@@ -61,5 +62,71 @@ usingApiKey().then(apiKey => {
         controls();
     };
     importButton.onclick = () => request('import');
+    const packForm = document.querySelector('#pack-download-form');
+    const packStatus = document.querySelector('#pack-download-status');
+    const packFolder = document.querySelector('#pack-download-folder');
+    const choices = document.querySelector('#pack-download-choices');
+    const jobs = document.querySelector('#pack-download-jobs');
+    let downloadingRequest = false;
+    async function packError(error) {
+        let message = 'Pack operation failed. Check System → Logs.';
+        try { const body = await error.json(); if (body.error === 'InvalidKeyValue') message = String(body.result.value); } catch (_) {}
+        packStatus.textContent = message;
+    }
+    async function refreshJobs() {
+        try {
+            const data = await fetchAPI('/pack-downloads', apiKey);
+            jobs.replaceChildren();
+            for (const job of data.result) {
+                const row = document.createElement('article');
+                const title = document.createElement('strong');
+                title.textContent = job.title;
+                const info = document.createElement('p');
+                info.textContent = `${job.status}: ${(job.received / 1024 / 1024).toFixed(1)} MiB${job.total ? ' / ' + (job.total / 1024 / 1024).toFixed(1) + ' MiB' : ''}. ${job.message}`;
+                const path = document.createElement('p');
+                path.textContent = job.folder;
+                row.append(title, info, path);
+                if (job.status === 'ready') {
+                    const review = document.createElement('button');
+                    review.type = 'button'; review.textContent = 'Scan Pack for Review';
+                    review.onclick = () => { if (!busy) { folder.value = job.folder + '/ready'; request('scan'); } };
+                    row.append(review);
+                }
+                jobs.append(row);
+            }
+        } catch (error) { await packError(error); }
+    }
+    packForm.onsubmit = async event => {
+        event.preventDefault();
+        if (downloadingRequest) return;
+        downloadingRequest = true;
+        choices.replaceChildren(); packStatus.textContent = 'Reading article download links…';
+        try {
+            const data = await (await sendAPI('POST', '/pack-downloads/preview', apiKey, {}, {url: document.querySelector('#pack-article').value})).json();
+            packStatus.textContent = `${data.result.title}: choose one pack link or mirror. Do not download every mirror.`;
+            if (!data.result.choices.length) packStatus.textContent += ' No supported download buttons found.';
+            for (const choice of data.result.choices) {
+                const button = document.createElement('button');
+                button.type = 'button'; button.textContent = `${choice.label} (${choice.service})${choice.supported ? '' : ' — unsupported'}`;
+                button.disabled = !choice.supported;
+                button.onclick = async () => {
+                    if (downloadingRequest) return;
+                    downloadingRequest = true;
+                    try {
+                        await sendAPI('POST', '/pack-downloads/download', apiKey, {}, {token: choice.token, folder: packFolder.value});
+                        packStatus.textContent = 'Pack download started. Progress appears below; the archive and source files will be retained.';
+                        choices.replaceChildren();
+                        await refreshJobs();
+                    } catch (error) { await packError(error); }
+                    finally { downloadingRequest = false; }
+                };
+                choices.append(button);
+            }
+        } catch (error) { await packError(error); }
+        finally { downloadingRequest = false; }
+    };
+    document.querySelector('#pack-jobs-refresh').onclick = refreshJobs;
+    refreshJobs();
+    setInterval(() => { if (!document.hidden) refreshJobs(); }, 5000);
     request('refresh');
 });

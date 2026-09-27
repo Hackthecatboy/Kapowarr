@@ -101,10 +101,17 @@ def scan(folder):
         Settings().update({'pack_inbox_folder': str(root)})
         cursor = get_db()
         paths = []
+        unfinished = [Path(row[0]) for row in cursor.execute(
+            "SELECT folder FROM pack_downloads WHERE status != 'ready'").fetchall()]
+        if any(root == path or path in root.parents for path in unfinished):
+            raise InvalidKeyValue('folder', 'This pack download is unfinished or held; review it before scanning')
         def failed(error):
             raise InvalidKeyValue('folder', 'Cannot read part of the inbox; check permissions')
         for directory, dirs, files in os.walk(root, followlinks=False, onerror=failed):
             for name in list(dirs):
+                if Path(directory) / name in unfinished:
+                    dirs.remove(name)
+                    continue
                 if (Path(directory) / name).is_symlink():
                     paths.append(Path(directory) / name)
                     dirs.remove(name)

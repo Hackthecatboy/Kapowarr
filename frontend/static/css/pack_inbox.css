@@ -8,3 +8,9 @@
 #pack-inbox-page table th { width: auto; text-align: left; }
 #inbox-results td { border-top: 1px solid var(--border-color); overflow-wrap: anywhere; }
 #inbox-results input[type="checkbox"] { width: 1.1rem; }
+
+#pack-download-section { border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem; }
+#pack-download-form label { display: block; margin-top: .75rem; }
+#pack-download-form input { display: block; width: min(50rem, 100%); padding: .6rem; }
+#pack-download-jobs article { padding: .75rem; margin-block: .75rem; border: 1px solid var(--border-color); overflow-wrap: anywhere; }
+#pack-download-jobs button { padding: .5rem; background: var(--accent-color); color: var(--nav-background-color); }

@@ -1373,3 +1373,9 @@ def _migrate_prowlarr_import():
 def _migrate_pack_inbox():
     from backend.internals.db import PACK_INBOX_SCHEMA
     get_db().execute(PACK_INBOX_SCHEMA)
+
+
+@DatabaseMigrationHandler.register_handler(56)
+def _migrate_pack_downloads():
+    from backend.internals.db import PACK_DOWNLOAD_SCHEMA
+    get_db().execute(PACK_DOWNLOAD_SCHEMA)
