@@ -17,6 +17,7 @@ from backend.base.file_extraction import extract_filename_data
 from backend.implementations.matching import match_title
 from backend.implementations.naming import mass_rename
 from backend.internals.db import get_db
+from backend.internals.db_models import PackInboxDB
 from backend.internals.settings import Settings
 
 _LOCK = Lock()
@@ -82,7 +83,7 @@ def valid_root(value: object) -> Path:
     if not path.is_absolute() or path.is_symlink() or not path.is_dir():
         raise InvalidKeyValue('folder', 'Use an existing absolute folder, not a symlink')
     root = path.resolve()
-    libraries = get_db().execute('SELECT folder FROM root_folders UNION SELECT folder FROM volumes WHERE folder IS NOT NULL').fetchall()
+    libraries = PackInboxDB.library_folders()
     for row in libraries:
         library = Path(row[0]).resolve()
         if root == library or root in library.parents or library in root.parents:
@@ -123,7 +124,7 @@ def classify(name: str) -> Tuple[Optional[Row], List[int], str]:
         return None, [], 'Unnumbered book needs a year and a unique single-issue library edition'
     bounds = number if isinstance(number, tuple) else (number, number)
     candidates = []
-    volumes = get_db().execute('SELECT id,title,alt_title,year,volume_number,special_version,folder FROM volumes').fetchall()
+    volumes = PackInboxDB.matching_volumes()
     for volume in volumes:
         if not (match_title(data['series'], volume['title']) or match_title(data['series'], volume['alt_title'] or '')):
             continue
@@ -137,11 +138,11 @@ def classify(name: str) -> Tuple[Optional[Row], List[int], str]:
         if data['volume_number'] is not None and data['volume_number'] != volume['volume_number']:
             continue
         if standalone:
-            issues = get_db().execute('SELECT id,calculated_issue_number,date FROM issues WHERE volume_id=?', (volume['id'],)).fetchall()
+            issues = PackInboxDB.volume_issues(volume['id'])
             if len(issues) != 1:
                 continue
         else:
-            issues = get_db().execute('SELECT id,calculated_issue_number,date FROM issues WHERE volume_id=? AND calculated_issue_number BETWEEN ? AND ? ORDER BY calculated_issue_number', (volume['id'], *bounds)).fetchall()
+            issues = PackInboxDB.range_issues(volume['id'], *bounds)
             if not issues or issues[0]['calculated_issue_number'] != bounds[0] or issues[-1]['calculated_issue_number'] != bounds[1]:
                 continue
         years = {volume['year']} | {int(i['date'][:4]) for i in issues if i['date'] and i['date'][:4].isdigit()}
@@ -151,13 +152,13 @@ def classify(name: str) -> Tuple[Optional[Row], List[int], str]:
     if len(candidates) != 1:
         return None, [], 'No library match' if not candidates else 'Ambiguous: multiple library series match'
     volume, ids = candidates[0]
-    owned = any(get_db().execute('SELECT 1 FROM issues_files WHERE issue_id=? LIMIT 1', (i,)).fetchone() for i in ids)
+    owned = any(PackInboxDB.existing_issue_file(i) for i in ids)
     return volume, ids, 'Already owned (all or part of this file)' if owned else ''
 
 
 def _managed_source(source: Path) -> Optional[Path]:
     """Only extracted files owned by completed Kapowarr pack jobs are disposable."""
-    for row in get_db().execute("SELECT folder FROM pack_downloads WHERE status='ready'").fetchall():
+    for row in PackInboxDB.ready_pack_folders():
         ready = Path(row[0]) / 'ready'
         if (ready.is_absolute() and ready in source.parents
                 and not any(p.is_symlink() for p in (ready, *ready.parents))):
@@ -183,15 +184,13 @@ def _cleanup_imported(row: Dict[str, Any]) -> None:
         if before.st_size != row['size'] or str(before.st_mtime_ns) != row['mtime']:
             raise ValueError('Source changed since import; retained for review')
         destination = Path(row['destination'])
-        record = cursor.execute('''SELECT f.id,v.folder,r.folder AS root FROM files f
-            JOIN volumes v ON v.id=? JOIN root_folders r ON r.id=v.root_folder
-            WHERE f.filepath=?''', (row['volume_id'], str(destination))).fetchone()
+        record = PackInboxDB.imported_file_location(row['volume_id'], str(destination))
         if record is None or any(p.is_symlink() for p in (destination, *destination.parents)):
             raise ValueError('Library copy missing or symlinked; source retained')
         if (Path(record['folder']).resolve() not in destination.resolve().parents
                 or Path(record['root']).resolve() not in destination.resolve().parents):
             raise ValueError('Library copy moved outside its library; source retained')
-        bound = {r[0] for r in cursor.execute('SELECT issue_id FROM issues_files WHERE file_id=?', (record['id'],)).fetchall()}
+        bound = {r[0] for r in PackInboxDB.file_issue_bindings(record['id'])}
         if not set(json.loads(row['issue_ids'])).issubset(bound):
             raise ValueError('Library issue bindings changed; source retained')
         copied_before = destination.stat()
@@ -206,7 +205,7 @@ def _cleanup_imported(row: Dict[str, Any]) -> None:
         message = 'Copied and verified; extracted source deleted'
     except (OSError, ValueError) as error:
         message = 'Copied and verified; cleanup needs review: ' + str(error)
-    cursor.execute('UPDATE pack_inbox SET message=? WHERE token=?', (message, row['token']))
+    PackInboxDB.set_message(message, row['token'])
     cursor.connection.commit()
 
 
@@ -226,7 +225,7 @@ def cleanup_selected(tokens: object) -> InboxListing:
         cursor = get_db()
         rows = []
         for token in dict.fromkeys(tokens):
-            row = cursor.execute("SELECT * FROM pack_inbox WHERE token=? AND root=? AND status='imported'", (token, str(root))).fetchone()
+            row = PackInboxDB.imported_selection(token, str(root))
             if row is None or _managed_source(Path(row['root']) / row['relative_path']) is None:
                 raise InvalidKeyValue('items', 'Only imported files from completed Kapowarr pack downloads can be cleaned')
             rows.append(dict(row))
@@ -238,7 +237,7 @@ def cleanup_selected(tokens: object) -> InboxListing:
 def listing() -> InboxListing:
     """Return saved review rows with available cleanup and series actions."""
     folder = Settings().sv.pack_inbox_folder
-    rows = get_db().execute('SELECT token,relative_path,status,message,destination FROM pack_inbox WHERE root=? ORDER BY relative_path', (folder,)).fetchalldict()
+    rows = PackInboxDB.review_rows(folder)
     for row in rows:
         source = Path(folder) / row['relative_path']
         row['can_cleanup'] = row['status'] == 'imported' and _managed_source(source) is not None and source.is_file()
@@ -264,8 +263,7 @@ def scan(folder: object) -> InboxListing:
         Settings().update({'pack_inbox_folder': str(root)})
         cursor = get_db()
         paths = []
-        unfinished = [Path(row[0]) for row in cursor.execute(
-            "SELECT folder FROM pack_downloads WHERE status != 'ready'").fetchall()]
+        unfinished = [Path(row[0]) for row in PackInboxDB.unfinished_pack_folders()]
         if any(root == path or path in root.parents for path in unfinished):
             raise InvalidKeyValue('folder', 'This pack download is unfinished or held; review it before scanning')
         def failed(error):
@@ -281,13 +279,13 @@ def scan(folder: object) -> InboxListing:
             paths.extend(Path(directory) / name for name in files if Path(name).suffix.lower() in COMICS | ARCHIVES)
             if len(paths) > 2000:
                 raise InvalidKeyValue('folder', 'Choose a smaller completed folder (maximum 2,000 files per scan)')
-        cursor.execute("UPDATE pack_inbox SET status='review', message='Source no longer present; scan again after restoring it' WHERE root=? AND status NOT IN ('imported','importing','held')", (str(root),))
+        PackInboxDB.mark_sources_unseen(str(root))
         for path in sorted(paths):
             relative = str(path.relative_to(root))
-            old = cursor.execute('SELECT id,status FROM pack_inbox WHERE root || ? || relative_path=?', (os.sep, str(path))).fetchone()
+            old = PackInboxDB.find_source(os.sep, str(path))
             if old:
                 # Narrowing the inbox to a weekly subfolder must not bypass a hold.
-                cursor.execute('UPDATE pack_inbox SET root=?,relative_path=? WHERE id=?', (str(root), relative, old['id']))
+                PackInboxDB.rebase_source(str(root), relative, old['id'])
                 if old['status'] in TERMINAL:
                     continue
             size, mtime, volume_id, ids = 0, '', None, []
@@ -311,11 +309,10 @@ def scan(folder: object) -> InboxListing:
                             status = 'owned'
             except (ValueError, OSError) as error:
                 message = str(error)
-            cursor.execute('''INSERT INTO pack_inbox(root,relative_path,token,status,message,size,mtime,volume_id,issue_ids)
-                VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(root,relative_path) DO UPDATE SET
-                token=excluded.token,status=excluded.status,message=excluded.message,size=excluded.size,
-                mtime=excluded.mtime,volume_id=excluded.volume_id,issue_ids=excluded.issue_ids''',
-                (str(root), relative, uuid4().hex, status, message, size, mtime, volume_id, json.dumps(ids)))
+            PackInboxDB.save_scan(
+                str(root), relative, uuid4().hex, status, message,
+                size, mtime, volume_id, json.dumps(ids)
+            )
         cursor.connection.commit()
         return listing()
 
@@ -340,7 +337,7 @@ def import_selected(tokens: object) -> InboxListing:
         cursor = get_db()
         rows = []
         for token in dict.fromkeys(tokens):
-            row = cursor.execute("SELECT * FROM pack_inbox WHERE token=? AND root=? AND status='matched'", (token, str(root))).fetchone()
+            row = PackInboxDB.matched_selection(token, str(root))
             if row is None:
                 raise InvalidKeyValue('items', 'Preview changed or item cannot be imported; scan again')
             rows.append(dict(row))
@@ -359,7 +356,7 @@ def import_selected(tokens: object) -> InboxListing:
                 if not library.is_absolute() or library.is_symlink():
                     raise ValueError('Library destination requires review')
                 destination = library.resolve() / ('Pack-Inbox-' + row['token']) / source.name
-                cursor.execute("UPDATE pack_inbox SET status='importing',message='Copy started; interrupted imports require review',destination=? WHERE token=?", (str(destination), row['token']))
+                PackInboxDB.mark_importing(str(destination), row['token'])
                 cursor.connection.commit()
                 copying = True
                 destination.parent.mkdir(parents=True, exist_ok=False)
@@ -381,11 +378,11 @@ def import_selected(tokens: object) -> InboxListing:
                     if _digest(copied) != digest.hexdigest():
                         raise ValueError('Copy checksum mismatch; review required')
                 cursor.execute('BEGIN IMMEDIATE')
-                if any(cursor.execute('SELECT 1 FROM issues_files WHERE issue_id=? LIMIT 1', (i,)).fetchone() for i in ids):
+                if any(PackInboxDB.existing_issue_file(i) for i in ids):
                     raise ValueError('An issue was imported elsewhere during copying; review the retained copy')
                 # Explicit verified issue bindings preserve this match during rescans.
-                file_id = cursor.execute('INSERT INTO files(filepath,size) VALUES(?,?)', (str(destination), before.st_size)).lastrowid
-                cursor.executemany('INSERT INTO issues_files(file_id,issue_id,forced) VALUES(?,?,1)', [(file_id,i) for i in ids])
+                file_id = PackInboxDB.add_library_file(str(destination), before.st_size)
+                PackInboxDB.bind_imported_issues([(file_id, i) for i in ids])
                 cursor.connection.commit()
                 if Settings().sv.rename_downloaded_files:
                     renamed = mass_rename(volume['id'], filepath_filter=[str(destination)],
@@ -393,13 +390,13 @@ def import_selected(tokens: object) -> InboxListing:
                     if len(renamed) != 1:
                         raise ValueError('Renaming did not return the imported file; inspect library')
                     destination = Path(renamed[0])
-                    cursor.execute('UPDATE pack_inbox SET destination=? WHERE token=?', (str(destination), row['token']))
-                cursor.execute("UPDATE pack_inbox SET status='imported',message='Copied and verified; original retained' WHERE token=?", (row['token'],))
+                    PackInboxDB.set_destination(str(destination), row['token'])
+                PackInboxDB.mark_imported(row['token'])
                 cursor.connection.commit()
-                imported = cursor.execute('SELECT * FROM pack_inbox WHERE token=?', (row['token'],)).fetchone()
+                imported = PackInboxDB.journal_entry(row['token'])
                 _cleanup_imported(dict(imported))
             except Exception as error:
                 cursor.connection.rollback()
-                cursor.execute('UPDATE pack_inbox SET status=?,message=? WHERE token=?', ('held' if copying else 'review', str(error), row['token']))
+                PackInboxDB.set_state('held' if copying else 'review', str(error), row['token'])
                 cursor.connection.commit()
         return listing()

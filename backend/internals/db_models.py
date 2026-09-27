@@ -5,7 +5,8 @@ Interacting with the database
 """
 
 from os import stat
-from typing import Dict, Iterable, List, Union
+from sqlite3 import Row
+from typing import Any, Dict, Iterable, List, Tuple, Union
 
 from backend.base.custom_exceptions import FileNotFound
 from backend.base.definitions import (FileData, GeneralFileData, PackJob,
@@ -481,7 +482,7 @@ class PackDownloadsDB:
 
 
 class PackInboxDB:
-    """Import journal queries used during managed-pack cleanup.
+    """Pack import journal, matching and cleanup queries.
 
     Callers own commits and perform filesystem validation before mutations.
     """
@@ -506,4 +507,225 @@ class PackInboxDB:
         get_db().execute(
             "UPDATE pack_inbox SET status='discarded',"
             "message='Discarded when finishing pack' WHERE token=?", (token,)
+        )
+
+    @staticmethod
+    def library_folders() -> List[Row]:
+        """Return root and volume folders for overlap validation."""
+        return get_db().execute(
+            'SELECT folder FROM root_folders UNION SELECT folder FROM volumes '
+            'WHERE folder IS NOT NULL'
+        ).fetchall()
+
+    @staticmethod
+    def matching_volumes() -> List[Row]:
+        """Return library identities used by filename matching."""
+        return get_db().execute(
+            'SELECT '
+            'id,title,alt_title,year,volume_number,special_version,folder FROM '
+            'volumes'
+        ).fetchall()
+
+    @staticmethod
+    def volume_issues(volume_id: int) -> List[Row]:
+        """Return every issue for a possible standalone edition."""
+        return get_db().execute(
+            'SELECT id,calculated_issue_number,date FROM issues WHERE '
+            'volume_id=?',
+            (volume_id,)
+        ).fetchall()
+
+    @staticmethod
+    def range_issues(volume_id: int, first: float, last: float) -> List[Row]:
+        """Return an inclusive issue range ordered by issue number."""
+        return get_db().execute(
+            'SELECT id,calculated_issue_number,date FROM issues WHERE '
+            'volume_id=? AND calculated_issue_number BETWEEN ? AND ? ORDER BY '
+            'calculated_issue_number',
+            (volume_id, first, last)
+        ).fetchall()
+
+    @staticmethod
+    def existing_issue_file(issue_id: int) -> Union[Row, None]:
+        """Return a row when an issue already has a file binding."""
+        return get_db().execute(
+            'SELECT 1 FROM issues_files WHERE issue_id=? LIMIT 1',
+            (issue_id,)
+        ).fetchone()
+
+    @staticmethod
+    def ready_pack_folders() -> List[Row]:
+        """Return managed folders eligible for source cleanup."""
+        return get_db().execute(
+            "SELECT folder FROM pack_downloads WHERE status='ready'"
+        ).fetchall()
+
+    @staticmethod
+    def imported_file_location(volume_id: int, filepath: str) -> Union[Row, None]:
+        """Locate a library file and the expected volume/root folders."""
+        return get_db().execute(
+            'SELECT f.id,v.folder,r.folder AS root FROM files f JOIN volumes v '
+            'ON v.id=? JOIN root_folders r ON r.id=v.root_folder WHERE '
+            'f.filepath=?',
+            (volume_id, filepath)
+        ).fetchone()
+
+    @staticmethod
+    def file_issue_bindings(file_id: int) -> List[Row]:
+        """Return all issue IDs bound to a library file."""
+        return get_db().execute(
+            'SELECT issue_id FROM issues_files WHERE file_id=?',
+            (file_id,)
+        ).fetchall()
+
+    @staticmethod
+    def set_message(message: str, token: str) -> None:
+        """Update a journal explanation without changing its status."""
+        get_db().execute(
+            'UPDATE pack_inbox SET message=? WHERE token=?',
+            (message, token)
+        )
+
+    @staticmethod
+    def imported_selection(token: str, root: str) -> Union[Row, None]:
+        """Resolve an imported selection only within the saved inbox."""
+        return get_db().execute(
+            'SELECT * FROM pack_inbox WHERE token=? AND root=? AND '
+            "status='imported'",
+            (token, root)
+        ).fetchone()
+
+    @staticmethod
+    def review_rows(root: str) -> List[Dict[str, Any]]:
+        """Return saved review rows in relative-path order."""
+        return get_db().execute(
+            'SELECT token,relative_path,status,message,destination FROM '
+            'pack_inbox WHERE root=? ORDER BY relative_path',
+            (root,)
+        ).fetchalldict()
+
+    @staticmethod
+    def unfinished_pack_folders() -> List[Row]:
+        """Return managed folders excluded from scanning."""
+        return get_db().execute(
+            "SELECT folder FROM pack_downloads WHERE status != 'ready'"
+        ).fetchall()
+
+    @staticmethod
+    def mark_sources_unseen(root: str) -> None:
+        """Reset reviewable rows before a scan; preserve import and hold states."""
+        get_db().execute(
+            "UPDATE pack_inbox SET status='review', message='Source no longer "
+            "present; scan again after restoring it' WHERE root=? AND status "
+            "NOT IN ('imported','importing','held')",
+            (root,)
+        )
+
+    @staticmethod
+    def find_source(separator: str, filepath: str) -> Union[Row, None]:
+        """Find a journal entry even when the scan root has changed."""
+        return get_db().execute(
+            'SELECT id,status FROM pack_inbox WHERE root || ? || '
+            'relative_path=?',
+            (separator, filepath)
+        ).fetchone()
+
+    @staticmethod
+    def rebase_source(root: str, relative_path: str, ident: int) -> None:
+        """Rebase a journal path without changing its recovery state."""
+        get_db().execute(
+            'UPDATE pack_inbox SET root=?,relative_path=? WHERE id=?',
+            (root, relative_path, ident)
+        )
+
+    @staticmethod
+    def save_scan(
+        root: str,
+        relative_path: str,
+        token: str,
+        status: str,
+        message: str,
+        size: int,
+        mtime: str,
+        volume_id: Union[int, None],
+        issue_ids: str
+    ) -> None:
+        """Insert or refresh a scanned file without replacing its destination."""
+        get_db().execute(
+            'INSERT INTO pack_inbox('
+            'root,relative_path,token,status,message,size,mtime,volume_id,issue_ids'
+            ') VALUES(?,?,?,?,?,?,?,?,?) '
+            'ON CONFLICT(root,relative_path) DO UPDATE SET '
+            'token=excluded.token,status=excluded.status,'
+            'message=excluded.message,size=excluded.size,mtime=excluded.mtime,'
+            'volume_id=excluded.volume_id,issue_ids=excluded.issue_ids',
+            (root, relative_path, token, status, message,
+             size, mtime, volume_id, issue_ids)
+        )
+
+    @staticmethod
+    def matched_selection(token: str, root: str) -> Union[Row, None]:
+        """Resolve a matched selection only within the saved inbox."""
+        return get_db().execute(
+            'SELECT * FROM pack_inbox WHERE token=? AND root=? AND '
+            "status='matched'",
+            (token, root)
+        ).fetchone()
+
+    @staticmethod
+    def mark_importing(destination: str, token: str) -> None:
+        """Journal the intended destination before filesystem writes."""
+        get_db().execute(
+            "UPDATE pack_inbox SET status='importing',message='Copy started; "
+            "interrupted imports require review',destination=? WHERE token=?",
+            (destination, token)
+        )
+
+    @staticmethod
+    def add_library_file(filepath: str, size: int) -> Union[int, None]:
+        """Insert the verified library file within the caller transaction."""
+        return get_db().execute(
+            'INSERT INTO files(filepath,size) VALUES(?,?)',
+            (filepath, size)
+        ).lastrowid
+
+    @staticmethod
+    def bind_imported_issues(bindings: List[Tuple[int, int]]) -> None:
+        """Bind verified issues with forced matching; leave commit to the caller."""
+        get_db().executemany(
+            'INSERT INTO issues_files(file_id,issue_id,forced) VALUES(?,?,1)',
+            bindings
+        )
+
+    @staticmethod
+    def set_destination(destination: str, token: str) -> None:
+        """Save the final path returned by renaming."""
+        get_db().execute(
+            'UPDATE pack_inbox SET destination=? WHERE token=?',
+            (destination, token)
+        )
+
+    @staticmethod
+    def mark_imported(token: str) -> None:
+        """Record completion before any managed-source cleanup."""
+        get_db().execute(
+            "UPDATE pack_inbox SET status='imported',message='Copied and "
+            "verified; original retained' WHERE token=?",
+            (token,)
+        )
+
+    @staticmethod
+    def journal_entry(token: str) -> Union[Row, None]:
+        """Return the complete journal record for one token."""
+        return get_db().execute(
+            'SELECT * FROM pack_inbox WHERE token=?',
+            (token,)
+        ).fetchone()
+
+    @staticmethod
+    def set_state(status: str, message: str, token: str) -> None:
+        """Record a review or hold after the caller rolls back failed work."""
+        get_db().execute(
+            'UPDATE pack_inbox SET status=?,message=? WHERE token=?',
+            (status, message, token)
         )

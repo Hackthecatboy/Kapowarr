@@ -34,6 +34,7 @@ class PackInbox(unittest.TestCase):
         self.db.executescript(DB_SCHEMA)
         self.cursor = self.db.cursor(factory=KapowarrCursor)
         self.start_patch('backend.features.pack_inbox.get_db', return_value=self.cursor)
+        self.start_patch('backend.internals.db_models.get_db', return_value=self.cursor)
         self.settings = SimpleNamespace(sv=SimpleNamespace(pack_inbox_folder='', rename_downloaded_files=False))
         self.settings.update = lambda values: setattr(self.settings.sv, 'pack_inbox_folder', values['pack_inbox_folder'])
         self.start_patch('backend.features.pack_inbox.Settings', return_value=self.settings)
@@ -300,3 +301,27 @@ class PackInbox(unittest.TestCase):
         self.db.execute("UPDATE volumes SET title='Beta Comics' WHERE id=2")
         self.db.execute("INSERT INTO issues(id,volume_id,comicvine_id,issue_number,calculated_issue_number) VALUES(3,1,3,'2',2)")
         self.assertIsNone(pack_inbox.classify(name)[0])
+
+    def test_journal_and_issue_bindings_follow_caller_rollback(self):
+        from backend.internals.db_models import PackInboxDB
+        self.comic('Alpha Comics 001 (2026).cbz')
+        row = self.scan()[0]
+        PackInboxDB.mark_importing('/library/pending.cbz', row['token'])
+        self.db.rollback()
+        self.assertEqual(PackInboxDB.journal_entry(row['token'])['status'], 'matched')
+        self.db.execute('BEGIN IMMEDIATE')
+        file_id = PackInboxDB.add_library_file('/library/verified.cbz', 100)
+        PackInboxDB.bind_imported_issues([(file_id, 1)])
+        self.assertTrue(PackInboxDB.existing_issue_file(1))
+        self.assertEqual(self.db.execute(
+            'SELECT forced FROM issues_files WHERE file_id=?', (file_id,)
+        ).fetchone()[0], 1)
+        self.db.rollback()
+        self.assertIsNone(PackInboxDB.existing_issue_file(1))
+        self.assertIsNone(self.db.execute(
+            'SELECT id FROM files WHERE id=?', (file_id,)
+        ).fetchone())
+        PackInboxDB.set_state('held', 'Review copy', row['token'])
+        self.db.commit()
+        PackInboxDB.mark_sources_unseen(str(self.inbox))
+        self.assertEqual(PackInboxDB.journal_entry(row['token'])['status'], 'held')
