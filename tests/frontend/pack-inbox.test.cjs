@@ -244,7 +244,7 @@ test('interrupted import stops without retrying or starting remaining files', as
 });
 
 
-test('review filter excludes owned entries while all retains them', async t => {
+test('attention and review filters exclude owned entries while all retains them', async t => {
     const {el} = await page(t, {
         items: ['review', 'held', 'importing', 'owned', 'matched', 'imported', 'discarded']
             .map(status => ({status, relative_path: status + '.cbz', token: status}))
@@ -254,6 +254,9 @@ test('review filter excludes owned entries while all retains them', async t => {
     el('#inbox-filter').value = 'review';
     el('#inbox-filter').onchange();
     assert.deepEqual(visible(), ['review', 'held', 'importing']);
+    el('#inbox-filter').value = 'pending';
+    el('#inbox-filter').onchange();
+    assert.deepEqual(visible(), ['review', 'held', 'importing', 'matched']);
     el('#inbox-filter').value = 'all';
     el('#inbox-filter').onchange();
     assert.equal(visible().length, 7);

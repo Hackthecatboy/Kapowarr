@@ -141,7 +141,7 @@ usingApiKey().then(apiKey => {
         const query = PackEls.inbox.search.value.trim().toLocaleLowerCase();
         for (const row of rows.children) {
             const state = row.dataset.status;
-            const visible = (mode === 'all' || (mode === 'pending' && !['imported', 'discarded'].includes(state))
+            const visible = (mode === 'all' || (mode === 'pending' && !['owned', 'imported', 'discarded'].includes(state))
                 || (mode === 'review' && ['review', 'held', 'importing'].includes(state)) || mode === state)
                 && row.dataset.path.toLocaleLowerCase().includes(query);
             row.hidden = !visible;
