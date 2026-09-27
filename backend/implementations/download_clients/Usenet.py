@@ -2,6 +2,8 @@
 
 from pathlib import Path
 from threading import Event
+from time import monotonic
+from typing import Optional
 
 from backend.base.custom_exceptions import IssueNotFound
 from backend.base.definitions import (DownloadClientIdentifier, DownloadState,
@@ -47,6 +49,9 @@ class UsenetDownload(ExternalDownload, BaseDirectDownload):
         self.phase = 'queued'
         self.error = None
         self.path_review = False
+        self.processing_review = False
+        self.completed_since: Optional[float] = None
+        self.completion_wait_remaining = 0
         self.retry_requested = Event()
         self.forget_requested = Event()
         self._state = DownloadState.QUEUED_STATE
@@ -86,7 +91,18 @@ class UsenetDownload(ExternalDownload, BaseDirectDownload):
         if info['state'] == DownloadState.FAILED_STATE:
             raise JobNeedsReview(
                 'Client reports a failed or unsupported terminal state. Inspect its history; files were retained.')
+        if info['state'] != DownloadState.IMPORTING_STATE:
+            self.completed_since = None
+            self.completion_wait_remaining = 0
         if info['state'] == DownloadState.IMPORTING_STATE:
+            now = monotonic()
+            if self.completed_since is None:
+                self.completed_since = now
+            delay = Settings().sv.usenet_completion_delay
+            self.completion_wait_remaining = max(0, int(delay - (now - self.completed_since) + 0.999))
+            if self.completion_wait_remaining:
+                self._state = DownloadState.QUEUED_STATE
+                return
             storage = info.get('storage')
             if not isinstance(storage, str) or not storage:
                 raise JobPathNeedsReview('Completed job has no output path')
@@ -118,7 +134,7 @@ class UsenetDownload(ExternalDownload, BaseDirectDownload):
 
     @property
     def can_retry(self):
-        return (self.state == DownloadState.PAUSED_STATE and self.path_review
+        return (self.state == DownloadState.PAUSED_STATE and (self.path_review or self.processing_review)
                 and bool(self.external_id) and self.phase == 'submitted'
                 and not self.retry_requested.is_set()
                 and not self.forget_requested.is_set())
@@ -129,7 +145,13 @@ class UsenetDownload(ExternalDownload, BaseDirectDownload):
                 and not self.retry_requested.is_set()
                 and not self.forget_requested.is_set())
 
+    @property
+    def status_detail(self):
+        return (f'Waiting {self.completion_wait_remaining}s before importing completed files'
+                if self.completion_wait_remaining else None)
+
     def as_dict(self):
         return {**super().as_dict(), 'client': self.external_client.id,
                 'external_id': self.external_id, 'error': self.error,
-                'can_retry': self.can_retry, 'can_forget': self.can_forget}
+                'can_retry': self.can_retry, 'can_forget': self.can_forget,
+                'status_detail': self.status_detail}

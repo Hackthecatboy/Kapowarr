@@ -6,7 +6,7 @@ isolated development project when repeating these checks.
 ## What the controls do
 
 - **Retry Import** rechecks an existing tracked job after a pre-import path
-  failure. It never submits another download. The button is only offered for a
+  failure or an unexpected processing exception before copying began. It never submits another download. The button is only offered for a
   paused path review with a recorded job ID and a submitted phase.
 - Saving a remote mapping automatically requests the same recheck for eligible
   paused jobs belonging to that client. Saving does not guarantee import succeeds.
@@ -63,3 +63,27 @@ validation. Existing import-boundary, ownership and restart tests also run.
 
 The qBittorrent download/import/continued-seeding walkthrough remains a separate
 roadmap milestone. Do not treat a SABnzbd recovery pass as torrent verification.
+
+## Completion delay and processing retries
+
+Settings → Download → **Usenet Completion Delay** defaults to 30 seconds
+(range 0–3600; 0 disables it). The timer starts when Kapowarr first observes
+SABnzbd/NZBGet completion. While waiting, Activity displays the remaining delay.
+Import checks happen at the normal polling interval, so the actual wait can be
+longer. Restarting or explicitly retrying starts a fresh delay. This is a grace
+period for completed files to become available, not proof that files are stable.
+
+A generic exception before the import enters its copying phase now offers
+**Retry Import** on Activity. It reuses the same remote job; it does not submit
+another download. There is no automatic loop for these exceptions. Errors after
+copying starts, uncertain submissions and client ownership failures remain held.
+The traceback remains available in System → Logs. Saving a mapping automatically
+rechecks only path failures, not unrelated processing exceptions.
+
+On the development container, set the delay to 60 seconds and download one test
+issue. Check that the queue waits after client completion and imports once.
+For the existing bad-mapping test, allow the delay to expire before expecting
+Retry Import. Restore the mapping and check that the same job imports after its
+new delay. Confirm the completed client file is retained and no duplicate job
+was submitted. A successful restart alone does not establish the original cause
+of a processing failure; capture its traceback if it recurs.

@@ -121,6 +121,8 @@ class PublicSettingsValues:
     download_folder: str = folder_path('temp_downloads')
     concurrent_direct_downloads: int = 1
     failing_download_timeout: int = 0
+    usenet_completion_delay: int = 30
+    download_source_order: CommaList = field(default_factory=lambda: CommaList(''))
     seeding_handling: SeedingHandling = SeedingHandling.COPY
     delete_completed_downloads: bool = True
 
@@ -428,7 +430,17 @@ class Settings(metaclass=Singleton):
         # Do key-specific checks and formatting
         converted_value = value
 
-        if key in ('download_min_size_mb', 'download_max_size_mb'):
+        if key == 'usenet_completion_delay':
+            if type(value) is not int or not 0 <= value <= 3600:
+                raise InvalidKeyValue(key, 'Use 0 to 3600 seconds')
+
+        elif key == 'download_source_order':
+            terms = [term.strip().lower() for term in value]
+            if terms and (len(terms) != 3 or set(terms) != {'usenet', 'torrent', 'ddl'}):
+                raise InvalidKeyValue(key, 'List usenet, torrent, ddl once each, or leave blank')
+            converted_value = CommaList(terms)
+
+        elif key in ('download_min_size_mb', 'download_max_size_mb'):
             if type(value) is not int or not 0 <= value <= 1_000_000:
                 raise InvalidKeyValue(key, value)
 

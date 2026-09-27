@@ -1,4 +1,5 @@
 const preferenceFields = {
+    usenet_completion_delay: 'number', download_source_order: 'list',
     download_min_size_mb: 'number', download_max_size_mb: 'number',
     download_preferred_formats: 'list', download_preferred_terms: 'list',
     download_excluded_terms: 'list'

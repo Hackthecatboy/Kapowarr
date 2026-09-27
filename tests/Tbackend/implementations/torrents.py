@@ -209,7 +209,7 @@ class ManagedTorrents(unittest.TestCase):
         self.root = Path(self.tmp.name) / 'downloads'
         self.root.mkdir()
         self.patch('backend.implementations.download_clients.Usenet.Settings',
-                   return_value=SimpleNamespace(sv=SimpleNamespace(download_folder=str(self.root))))
+                   return_value=SimpleNamespace(sv=SimpleNamespace(download_folder=str(self.root), usenet_completion_delay=0)))
         self.patch('backend.implementations.download_clients.Torrent.RemoteMappings.local_to_remote',
                    side_effect=lambda client, path: path)
         self.patch('backend.implementations.download_clients.Torrent.RemoteMappings.remote_to_local',

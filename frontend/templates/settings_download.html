@@ -72,7 +72,12 @@
 					</tr>
 				</tbody>
 			</table>
-			<h2>Release Preferences</h2>
+			<h2>Import and Source Preferences</h2>
+            <table class="fold-table"><tbody>
+<tr><th><label for="usenet-completion-delay-input">Usenet Completion Delay (seconds)</label></th><td><input id="usenet-completion-delay-input" type="number" min="0" max="3600" step="1"><p>Wait after SABnzbd or NZBGet reports completion before checking files for import. Default: 30 seconds. 0 disables the delay. Checks run on the normal polling interval.</p></td></tr>
+<tr><th><label for="download-source-order-input">Source Order</label></th><td><select id="download-source-order-input"><option value="">Search all sources together</option><option value="usenet, torrent, ddl">Usenet → Torrents → Direct downloads</option><option value="usenet, ddl, torrent">Usenet → Direct downloads → Torrents</option><option value="torrent, usenet, ddl">Torrents → Usenet → Direct downloads</option><option value="torrent, ddl, usenet">Torrents → Direct downloads → Usenet</option><option value="ddl, usenet, torrent">Direct downloads → Usenet → Torrents</option><option value="ddl, torrent, usenet">Direct downloads → Torrents → Usenet</option></select><p>Direct downloads includes GetComics. Automatic searches try later sources only for remaining issues. Manual searches show all sources in this order; RSS prefers this order among available results. Choose Search all sources together to give sources equal priority.</p></td></tr>
+            </tbody></table>
+            <h2>Release Preferences</h2>
 			<p>Used by manual search, automatic search and RSS. Automatic searches continue to fill missing issues; existing library files are not upgraded or replaced.</p>
 			<p id="preference-settings-error" class="error" role="status"></p>
 			<table class="fold-table"><tbody>

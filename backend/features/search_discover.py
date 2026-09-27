@@ -47,8 +47,8 @@ async def _get_all_new_releases() -> List[SearchResultData]:
     ))
 
     return [
-        download
-        for result in results
+        {**download, "source_type": indexer.download_type.name.lower()}
+        for indexer, result in zip(indexers, results)
         for download in result
     ]
 

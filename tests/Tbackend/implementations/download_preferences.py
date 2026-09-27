@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 from backend.base.custom_exceptions import InvalidKeyValue
 from backend.base.definitions import SpecialVersion
 from backend.base.helpers import CommaList
-from backend.features.search_full import SearchCoordinator, choose_downloads
+from backend.features.search_full import SearchCoordinator, choose_downloads, auto_search
 from backend.implementations.download_preferences import evaluate_preferences
 from backend.implementations.matching import check_search_result_match
 from backend.internals.db import DB_SCHEMA, KapowarrCursor, setup_db_adapters_and_converters
@@ -26,6 +26,60 @@ class DownloadPreferences(unittest.TestCase):
         self.volume = SimpleNamespace(title='Example Comic', alt_title=None, year=2026,
                                       volume_number=1, special_version=SpecialVersion.NORMAL)
         self.issues = [SimpleNamespace(id=1, calculated_issue_number=1.0, date='2026-01-01')]
+
+    def test_source_order_controls_selection_and_can_be_reversed(self):
+        nzb = {**self.release, 'source_type': 'usenet', 'link': 'nzb'}
+        ddl = {**self.release, 'source_type': 'ddl', 'link': 'ddl'}
+        for order, expected in [(['usenet','torrent','ddl'], nzb), (['ddl','torrent','usenet'], ddl)]:
+            settings = replace(self.settings, download_source_order=CommaList(order))
+            with patch('backend.implementations.download_preferences.Settings', return_value=SimpleNamespace(sv=settings)):
+                self.assertEqual(choose_downloads([ddl,nzb], [(1,1.0)], self.issues), [expected])
+
+    def test_auto_search_queries_later_sources_only_for_uncovered_issues(self):
+        settings = replace(self.settings, download_source_order=CommaList(['usenet','torrent','ddl']))
+        issues = self.issues + [SimpleNamespace(id=2, calculated_issue_number=2.0, date='2026-02-01')]
+        volume = Mock()
+        volume.get_data.return_value = SimpleNamespace(**vars(self.volume), monitored=True)
+        volume.get_issues.return_value = issues
+        volume.get_open_issues.return_value = [(1,1.0),(2,2.0)]
+        calls = []
+        def coordinator(volume_id, wanted, downloadable_only, source_type):
+            calls.append((source_type, wanted))
+            async def search():
+                if source_type == 'usenet':
+                    return [{**self.release, 'source_type': source_type, 'match': True}]
+                return [{**self.release, 'source_type': source_type, 'issue_number': 2.0, 'link':'second', 'match':True}]
+            return SimpleNamespace(search=search)
+        with patch('backend.features.search_full.Volume',return_value=volume), \
+                patch('backend.features.search_full.Settings',return_value=SimpleNamespace(sv=settings)), \
+                patch('backend.implementations.download_preferences.Settings',return_value=SimpleNamespace(sv=settings)), \
+                patch('backend.features.search_full.SearchCoordinator',side_effect=coordinator):
+            selected = auto_search(1)
+        self.assertEqual(calls,[('usenet',[1,2]),('torrent',[2])])
+        self.assertEqual([r['issue_number'] for r in selected],[1.0,2.0])
+
+    def test_auto_search_falls_back_on_empty_or_rejected_results(self):
+        settings = replace(self.settings, download_source_order=CommaList(['usenet','torrent','ddl']))
+        volume = Mock()
+        volume.get_data.return_value = SimpleNamespace(**vars(self.volume), monitored=True)
+        volume.get_issues.return_value = self.issues
+        volume.get_open_issues.return_value = [(1,1.0)]
+        calls = []
+        def coordinator(volume_id, wanted, downloadable_only, source_type):
+            calls.append(source_type)
+            async def search():
+                if source_type == 'usenet':
+                    return [{**self.release, 'match':False}]
+                if source_type == 'torrent':
+                    return []
+                return [{**self.release, 'match':True, 'source_type':'ddl'}]
+            return SimpleNamespace(search=search)
+        with patch('backend.features.search_full.Volume',return_value=volume), \
+                patch('backend.features.search_full.Settings',return_value=SimpleNamespace(sv=settings)), \
+                patch('backend.implementations.download_preferences.Settings',return_value=SimpleNamespace(sv=settings)), \
+                patch('backend.features.search_full.SearchCoordinator',side_effect=coordinator):
+            self.assertEqual(len(auto_search(1)),1)
+        self.assertEqual(calls,['usenet','torrent','ddl'])
 
     def test_defaults_leave_selection_unchanged(self):
         result = evaluate_preferences(self.release, self.settings)
@@ -113,15 +167,29 @@ class DownloadPreferences(unittest.TestCase):
         self.addCleanup(settings.clear_cache)
         with patch('backend.internals.settings.get_db',return_value=cursor), patch('backend.internals.settings.commit',side_effect=db.commit):
             settings._insert_missing_settings()
-            settings.update(dict(download_min_size_mb=10,download_max_size_mb=100,
+            settings.update(dict(usenet_completion_delay=60,download_source_order=['usenet','torrent','ddl'],download_min_size_mb=10,download_max_size_mb=100,
                                  download_preferred_formats=['CBZ','cbr','cbz'],
                                  download_preferred_terms=[' Team-A '],download_excluded_terms=['bad']),from_public=True)
             settings.clear_cache()
             self.assertEqual(list(settings.sv.download_preferred_formats),['cbz','cbr'])
             self.assertEqual(list(settings.sv.download_preferred_terms),['team-a'])
             self.assertEqual(settings.sv.download_max_size_mb,100)
+            self.assertEqual(settings.sv.usenet_completion_delay,60)
+            self.assertEqual(list(settings.sv.download_source_order),['usenet','torrent','ddl'])
+            for values in ({'usenet_completion_delay': -1}, {'usenet_completion_delay': True},
+                           {'usenet_completion_delay': 3601}, {'download_source_order':['ddl']},
+                           {'download_source_order':['ddl','ddl','usenet']}):
+                with self.assertRaises(InvalidKeyValue):
+                    settings.update(values, from_public=True)
             for values in [dict(download_min_size_mb=-1),dict(download_max_size_mb=True),dict(download_preferred_formats=['zip']),dict(download_max_size_mb=5),dict(download_min_size_mb=101)]:
                 with self.subTest(values=values),self.assertRaises(InvalidKeyValue):
                     settings.update(values,from_public=True)
                 self.assertEqual(settings.sv.download_max_size_mb,100)
+            self.assertEqual(settings.sv.usenet_completion_delay,60)
+            self.assertEqual(list(settings.sv.download_source_order),['usenet','torrent','ddl'])
+            for values in ({'usenet_completion_delay': -1}, {'usenet_completion_delay': True},
+                           {'usenet_completion_delay': 3601}, {'download_source_order':['ddl']},
+                           {'download_source_order':['ddl','ddl','usenet']}):
+                with self.assertRaises(InvalidKeyValue):
+                    settings.update(values, from_public=True)
                 self.assertEqual(settings.sv.download_min_size_mb,10)

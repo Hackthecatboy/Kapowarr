@@ -47,4 +47,12 @@ def evaluate_preferences(result, settings=None):
             notes.append('Format unknown or ambiguous; no format preference bonus')
     if rejection:
         notes.insert(0, rejection)
-    return dict(rejection=rejection, rank=[format_rank, -len(matched)], notes=notes)
+    rank = [format_rank, -len(matched)]
+    order = list(settings.download_source_order)
+    if order:
+        source = result.get('source_type', '')
+        source_rank = order.index(source) if source in order else len(order)
+        rank.insert(0, source_rank)
+        if source in order:
+            notes.append('Source priority: ' + str(source_rank + 1) + ' (' + source + ')')
+    return dict(rejection=rejection, rank=rank, notes=notes)

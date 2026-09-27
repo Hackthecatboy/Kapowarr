@@ -635,7 +635,7 @@ class DownloadHandler(metaclass=Singleton):
     def retry_path_reviews(self, client_id: int) -> None:
         for download in list(self.queue):
             if (isinstance(download, UsenetDownload)
-                    and download.external_client.id == client_id and download.can_retry):
+                    and download.external_client.id == client_id and download.path_review and download.can_retry):
                 self.recover(download.id, 'retry')
 
     def remove(self, download_id: int, blocklist: bool = False) -> None:

@@ -1,6 +1,6 @@
 # Development roadmap
 
-Updated September 25, 2026. This is an unofficial personal development fork.
+Updated September 26, 2026. This is an unofficial personal development fork.
 
 The goal remains a full Sonarr-style indexer and download-client catalog, with
 comic-appropriate automation and recovery. Keep the Kapowarr v1.3.2 foundation
@@ -14,7 +14,7 @@ fork. The milestones below are priorities, not a claim of feature parity.
   this working after the single-file completion fix (`122f815`).
 - Prowlarr Torznab results and qBittorrent connectivity have been exercised on
   the NAS. A complete torrent import with continued seeding is still unverified; the user
-  reports testing is blocked by a Prowlarr/Bitmag issue.
+  resolved the Bitmagnet discovery blocker by enabling DHT in qBittorrent.
 - SABnzbd, NZBGet, qBittorrent and Transmission adapters are implemented;
   NZBGet and Transmission still need live validation.
 - Newznab/Torznab manual search, automatic search and RSS routing are implemented.
@@ -39,13 +39,13 @@ fork. The milestones below are priorities, not a claim of feature parity.
 Implemented with regression checks. The user confirmed the recovery walkthrough
 working on Synology.
 Follow the [queue recovery test](docs/queue-recovery.md). Retry is limited to
-pre-import path failures; torrent ownership failures still require manual review.
+pre-import path failures and unexpected exceptions before copying starts; torrent ownership failures still require manual review. A configurable Usenet completion delay (default 30 seconds) and the broader Retry Import action are implemented with regression tests; NAS validation is pending.
 
 Acceptance: correct a bad mapping and import the same tracked job without a
 restart, duplicate download or duplicate library copy. Never automatically replay
 an uncertain submission or partially completed import.
 
-### 2. Verify the torrent workflow on Synology — blocked
+### 2. Verify the torrent workflow on Synology — ready for testing
 
 - [ ] Download a matching release through Prowlarr and qBittorrent.
 - [ ] Verify library import while the original continues seeding.
@@ -79,6 +79,7 @@ question; importing its indexers does not establish that support.
   and explainable ranking; verified group metadata parsing remains future work.
 - [ ] Upgrade rules and a stopping point once the desired quality is met.
 - [x] Explain selection/rejection reasons in manual search.
+- [x] Configurable source-group priority and sequential automatic-search fallback (including GetComics last or first); NAS validation pending.
 
 See [download preferences](docs/download-preferences.md) for rules and the
 search-only NAS test. The user confirmed the preferences working. Automatic replacement of

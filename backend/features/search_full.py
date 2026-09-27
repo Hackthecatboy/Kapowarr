@@ -18,6 +18,7 @@ from backend.implementations.download_preferences import evaluate_preferences
 from backend.implementations.query_builder_manager import QueryBuilders
 from backend.implementations.search_action_planner import SearchActionPlanner
 from backend.implementations.volumes import Volume
+from backend.internals.settings import Settings
 
 
 class IndexerTeam(TypedDict):
@@ -38,7 +39,8 @@ class SearchCoordinator:
         self,
         volume_id: int,
         wanted_issues: List[int],
-        downloadable_only: bool = False
+        downloadable_only: bool = False,
+        source_type: Union[str, None] = None
     ) -> None:
         """Initalise the coordinator.
 
@@ -64,6 +66,9 @@ class SearchCoordinator:
             if not client.get_indexer_data()["enabled"]:
                 continue
             if downloadable_only and not client.supports_downloads:
+                continue
+
+            if source_type is not None and client.download_type.name.lower() != source_type:
                 continue
 
             remaining_wanted_issues = list(wanted_issues)
@@ -269,6 +274,7 @@ class SearchCoordinator:
                 )
 
                 for indexer_result in indexer_results.results:
+                    indexer_result = {**indexer_result, "source_type": team["indexer"].download_type.name.lower()}
                     indexer_result = refine_special_version(
                         self.volume_data,
                         indexer_result
@@ -490,33 +496,34 @@ def auto_search(
         LOGGER.debug(f'Auto search results: {result}')
         return result
 
-    coordinator = SearchCoordinator(
-        volume_id,
-        [i[0] for i in searchable_issues],
-        downloadable_only=True
-    )
-    search_results = [
-        r
-        for r in run(coordinator.search())
-        if r["match"]
-    ]
-
-    if issue_id is not None or volume_data.special_version not in (
-        SpecialVersion.NORMAL,
-        SpecialVersion.VOLUME_AS_ISSUE
-    ):
-        # We're searching for one "item", so just grab first search result.
-        result = search_results[:1] if search_results else []
-        LOGGER.debug('Auto search returned %d results', len(result))
-        return result
-
-    # We're searching for a volume, so we might download multiple search results.
-    # Find a combination of search results that download the most issues.
-    chosen_downloads = choose_downloads(
-        search_results,
-        searchable_issues,
-        volume_issues
-    )
+    # With a configured order, finish each source group before querying the
+    # next. Only selected, downloadable results remove issues from the next search.
+    source_groups: List[Union[str, None]] = list(Settings().sv.download_source_order) or [None]
+    remaining = list(searchable_issues)
+    chosen_downloads: List[MatchedSearchResultData] = []
+    single_item = issue_id is not None or volume_data.special_version not in (
+        SpecialVersion.NORMAL, SpecialVersion.VOLUME_AS_ISSUE)
+    for source_type in source_groups:
+        coordinator = SearchCoordinator(
+            volume_id, [i[0] for i in remaining],
+            downloadable_only=True, source_type=source_type)
+        search_results = [r for r in run(coordinator.search())
+                          if r["match"] and r.get('download_supported', True)]
+        selected = (search_results[:1] if single_item else
+                    choose_downloads(search_results, remaining, volume_issues))
+        chosen_downloads.extend(selected)
+        if single_item and selected:
+            break
+        for result in selected:
+            if result['special_version']:
+                remaining.clear()
+                break
+            if result['issue_number'] is not None:
+                lower, upper = force_range(result['issue_number'])
+                remaining = [(ident, number) for ident, number in remaining
+                             if not lower <= number <= upper]
+        if not remaining:
+            break
 
     LOGGER.debug('Auto search selected %d results', len(chosen_downloads))
     return chosen_downloads

@@ -57,3 +57,34 @@ Automatic searches still fill missing issues only. They do not replace existing
 library files because a release scores better. Stored quality information,
 upgrade cutoffs and safe replacement/rollback are a separate future slice. This
 also avoids interfering with torrent originals that may still be seeding.
+
+## Source order and fallback
+
+Settings → Download → **Source Order** controls source groups. Choose
+**Usenet → Torrents → Direct downloads** to make GetComics a fallback, or choose
+an order beginning with Direct downloads to prefer it. Indexers within a group
+have equal source priority. The default, **Search all sources together**, keeps
+the previous behavior.
+
+Automatic search completes one group before querying the next. Only issues
+covered by selected, matching, downloadable results are removed from the next
+group's search. If earlier groups cover everything, later groups are not queried.
+Manual search still queries all enabled sources and ranks matches by source
+order before format/term preferences. RSS still checks all enabled sources and
+uses the order when choosing between results available in that sync. This does
+not wait for a preferred source to publish a future release.
+
+This is search fallback, not failed-download replacement: a selected release
+that later fails to download or import does not automatically trigger another
+source. Existing owned-issue and partial-pack safeguards still apply.
+
+### Development test
+
+1. Choose Usenet → Torrents → Direct downloads and save; reload to confirm it persists.
+2. Manually search an issue available on both NZB and GetComics. Both should
+   appear, with matching Usenet results ahead of matching GetComics results.
+3. Auto-search a missing issue available on Usenet. Confirm the chosen source
+   and, using Debug logs, that no GetComics query was sent for that search.
+4. Test a missing issue absent from earlier sources but available on GetComics;
+   confirm fallback finds it. Reverse the order to verify GetComics can be preferred.
+5. Restore Info logging after testing.

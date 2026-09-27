@@ -25,9 +25,12 @@ def run_torrent(handler, download):
                 return
             if download.retry_requested.is_set():
                 download.retry_requested.clear()
-                if review and download.path_review and download.phase == 'submitted' and download.external_id:
+                if review and download.can_retry:
                     review = False
                     download.path_review = False
+                    download.processing_review = False
+                    download.completed_since = None
+                    download.state = DS.QUEUED_STATE
                     download.error = None
             if download.state == DS.CANCELED_STATE:
                 download.cancel_remote()
@@ -58,6 +61,7 @@ def run_torrent(handler, download):
                     return
                 download.error = None
         except JobNeedsReview as error:
+            download.processing_review = False
             download.path_review = isinstance(error, JobPathNeedsReview)
             download.error, review = str(error), True
             if download.state not in (DS.CANCELED_STATE, DS.SHUTDOWN_STATE):
@@ -65,10 +69,13 @@ def run_torrent(handler, download):
         except (ClientNotWorking, CredentialInvalid):
             download.error = 'Client connection failed. Check credentials and availability.'
         except Exception:
+            download.processing_review = download.phase == 'submitted' and bool(download.external_id)
             download.path_review = False
             LOGGER.exception(
                 'Torrent job %s needs review after a processing error', download.id)
             download.error, review = 'Processing failed. Inspect the client and library copy; automatic retry is paused.', True
+            if download.processing_review:
+                download.error = 'Processing failed before copying began. Use Retry Import to recheck the existing client job.'
             if download.state not in (DS.CANCELED_STATE, DS.SHUTDOWN_STATE):
                 download.state = DS.PAUSED_STATE
         ws.emit(QueueStatusEvent(download))

@@ -86,9 +86,12 @@ def run_usenet(handler, download):
                 return
             if download.retry_requested.is_set():
                 download.retry_requested.clear()
-                if review and download.path_review and download.phase == 'submitted' and download.external_id:
+                if review and download.can_retry:
                     review = False
                     download.path_review = False
+                    download.processing_review = False
+                    download.completed_since = None
+                    download.state = DS.QUEUED_STATE
                     download.error = None
             if download.state == DS.CANCELED_STATE:
                 # Explicit user cancellation addresses only the tracked remote job.
@@ -122,6 +125,7 @@ def run_usenet(handler, download):
                     return
                 download.error = None
         except JobNeedsReview as error:
+            download.processing_review = False
             download.path_review = isinstance(error, JobPathNeedsReview)
             download.error = str(error)
             review = True
@@ -132,10 +136,13 @@ def run_usenet(handler, download):
             # Polling/cleanup can retry. A submission with uncertain outcome
             # re-enters submit_once, which holds it instead of submitting twice.
         except Exception:
+            download.processing_review = download.phase == 'submitted' and bool(download.external_id)
             download.path_review = False
             LOGGER.exception(
                 'Usenet job %s needs review after an import or persistence error', download.id)
             download.error = 'Processing failed. Inspect the client and import folder; automatic retry is paused.'
+            if download.processing_review:
+                download.error = 'Processing failed before copying began. Use Retry Import to recheck the existing client job.'
             review = True
             if download.state not in (DS.CANCELED_STATE, DS.SHUTDOWN_STATE):
                 download.state = DS.PAUSED_STATE

@@ -165,7 +165,7 @@ class ManagedUsenet(unittest.TestCase):
         self.library = Path(self.tmp.name) / 'library'
         self.library.mkdir()
         self.patch('backend.implementations.download_clients.Usenet.Settings',
-                   return_value=SimpleNamespace(sv=SimpleNamespace(download_folder=str(self.root))))
+                   return_value=SimpleNamespace(sv=SimpleNamespace(download_folder=str(self.root), usenet_completion_delay=0)))
         self.patch('backend.features.usenet_downloads.Volume', return_value=SimpleNamespace(
             vd=SimpleNamespace(folder=str(self.library))))
         self.client = Mock(id=1)
@@ -182,6 +182,64 @@ class ManagedUsenet(unittest.TestCase):
         patcher = patch(*args, **kwargs)
         self.addCleanup(patcher.stop)
         return patcher.start()
+
+    def test_completion_delay_waits_before_path_checks_and_resets(self):
+        self.client.get_download.return_value = dict(
+            state=DS.IMPORTING_STATE, storage='/remote/job', size=100, progress=100, speed=0)
+        with patch('backend.implementations.download_clients.Usenet.Settings',
+                   return_value=SimpleNamespace(sv=SimpleNamespace(usenet_completion_delay=30))), \
+                patch('backend.implementations.download_clients.Usenet.monotonic') as clock, \
+                patch('backend.implementations.download_clients.Usenet.RemoteMappings.remote_to_local',
+                      return_value=str(self.root / 'not-ready')) as mapping:
+            clock.return_value = 100
+            self.download.update_status()
+            self.assertEqual(self.download.state, DS.QUEUED_STATE)
+            self.assertEqual(self.download.completion_wait_remaining, 30)
+            from backend.internals.server import QueueStatusEvent
+            self.assertIn('Waiting 30s', QueueStatusEvent(self.download).get_body()['status_detail'])
+            mapping.assert_not_called()
+            clock.return_value = 129
+            self.download.update_status()
+            mapping.assert_not_called()
+            clock.return_value = 130
+            with self.assertRaises(JobPathNeedsReview):
+                self.download.update_status()
+            self.assertEqual(mapping.call_count, 1)
+            self.client.get_download.return_value['state'] = DS.DOWNLOADING_STATE
+            self.download.update_status()
+            self.assertIsNone(self.download.completed_since)
+            self.client.get_download.return_value['state'] = DS.IMPORTING_STATE
+            self.download.update_status()
+            self.assertEqual(self.download.completion_wait_remaining, 30)
+
+    def test_processing_retry_reuses_job_but_blocks_partial_import(self):
+        handler = self.recovery_handler()
+        self.cursor.execute("UPDATE download_queue SET external_id='existing-job', external_phase='submitted'")
+        self.download._sleep_event = Mock()
+        attempts = []
+        self.download.update_status = Mock(side_effect=lambda: setattr(self.download, 'state', DS.IMPORTING_STATE))
+        def importer(download):
+            attempts.append(download.external_id)
+            if len(attempts) == 1:
+                raise PermissionError('Temporary source access failure')
+            download.phase = 'imported'
+        def retry(*args):
+            self.assertTrue(self.download.can_retry)
+            handler.recover(self.download.id, 'retry')
+        self.download._sleep_event.wait.side_effect = retry
+        with patch('backend.features.usenet_downloads.import_completed', side_effect=importer), \
+                patch('backend.features.usenet_downloads.WebSocket'), \
+                patch('backend.features.download_queue.WebSocket'), \
+                patch('backend.features.usenet_downloads.PostProcessingContext'):
+            run_usenet(handler, self.download)
+        self.assertEqual(attempts, ['existing-job', 'existing-job'])
+        self.client.add_download.assert_not_called()
+        self.client.delete_download.assert_not_called()
+        self.download.state = DS.PAUSED_STATE
+        self.download.processing_review = True
+        for phase in ('submitting', 'importing', 'imported'):
+            self.download.phase = phase
+            self.assertFalse(self.download.can_retry)
 
     def test_submission_persists_id_and_restart_never_resubmits(self):
         self.download.run()

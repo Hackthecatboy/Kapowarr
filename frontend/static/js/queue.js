@@ -57,7 +57,7 @@ function updateQueueEntry(obj) {
     tr.querySelector('.forget-dl').classList.toggle('hidden', !obj.can_forget);
 	tr.dataset.status = obj.status;
 	tr.querySelector('td:nth-child(1)').innerText =
-		obj.status.charAt(0).toUpperCase() + obj.status.slice(1) + (obj.error ? `: ${obj.error}` : '');
+		obj.status.charAt(0).toUpperCase() + obj.status.slice(1) + (obj.error ? `: ${obj.error}` : obj.status_detail ? `: ${obj.status_detail}` : '');
 	tr.querySelector('td:nth-child(4)').innerText =
 		convertSize(obj.size, 1);
 	tr.querySelector('td:nth-child(5)').innerText =

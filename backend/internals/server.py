@@ -426,7 +426,8 @@ class QueueStatusEvent(WebSocketEvent):
             "progress": self.download.progress,
             "error": getattr(self.download, "error", None),
             "can_retry": getattr(self.download, "can_retry", False),
-            "can_forget": getattr(self.download, "can_forget", False)
+            "can_forget": getattr(self.download, "can_forget", False),
+            "status_detail": getattr(self.download, "status_detail", None)
         }
 
 
