@@ -1397,3 +1397,10 @@ def _migrate_pack_weekday():
         cursor.execute('ALTER TABLE pack_subscriptions ADD COLUMN weekday INTEGER NOT NULL DEFAULT 6')
     if 'last_scheduled' not in columns:
         cursor.execute('ALTER TABLE pack_subscriptions ADD COLUMN last_scheduled TEXT')
+
+
+@DatabaseMigrationHandler.register_handler(59)
+def _migrate_pack_manual_matches():
+    cursor = get_db()
+    if 'manual_match' not in {row[1] for row in cursor.execute('PRAGMA table_info(pack_inbox)')}:
+        cursor.execute('ALTER TABLE pack_inbox ADD COLUMN manual_match BOOL NOT NULL DEFAULT 0')

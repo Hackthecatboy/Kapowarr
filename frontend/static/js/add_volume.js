@@ -42,8 +42,16 @@ const SearchEls = {
 //
 // Searching
 //
+const seriesPickerToken = new URLSearchParams(window.location.search).get('picker');
+if (seriesPickerToken && window.parent !== window) document.documentElement.classList.add('series-picker-mode');
+function selectPickerSeries(id) {
+    if (!seriesPickerToken || window.parent === window) return false;
+    window.parent.postMessage({type: 'pack-series-selected', token: seriesPickerToken, volume_id: id}, window.location.origin);
+    return true;
+}
+
 function addAlreadyAdded(entry, id) {
-	entry.onclick = e => window.location.href = `${url_base}/volumes/${id}`;
+	entry.onclick = e => { if (!selectPickerSeries(id)) window.location.href = `${url_base}/volumes/${id}`; };
 
 	const title = entry.querySelector('h2');
 	const aa_icon = document.createElement('img');
@@ -456,6 +464,7 @@ function addVolume() {
 			);
 			addAlreadyAdded(entry, json.result.id);
 			closeWindow();
+            selectPickerSeries(json.result.id);
 		})
 		.catch(e => {
 			if (e.status === 509) {

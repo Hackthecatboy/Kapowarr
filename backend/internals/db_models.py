@@ -625,7 +625,7 @@ class PackInboxDB:
     def find_source(separator: str, filepath: str) -> Union[Row, None]:
         """Find a journal entry even when the scan root has changed."""
         return get_db().execute(
-            'SELECT id,status FROM pack_inbox WHERE root || ? || '
+            'SELECT * FROM pack_inbox WHERE root || ? || '
             'relative_path=?',
             (separator, filepath)
         ).fetchone()
@@ -648,19 +648,36 @@ class PackInboxDB:
         size: int,
         mtime: str,
         volume_id: Union[int, None],
-        issue_ids: str
+        issue_ids: str,
+        manual_match: bool = False
     ) -> None:
         """Insert or refresh a scanned file without replacing its destination."""
         get_db().execute(
             'INSERT INTO pack_inbox('
-            'root,relative_path,token,status,message,size,mtime,volume_id,issue_ids'
-            ') VALUES(?,?,?,?,?,?,?,?,?) '
+            'root,relative_path,token,status,message,size,mtime,volume_id,issue_ids,manual_match'
+            ') VALUES(?,?,?,?,?,?,?,?,?,?) '
             'ON CONFLICT(root,relative_path) DO UPDATE SET '
             'token=excluded.token,status=excluded.status,'
             'message=excluded.message,size=excluded.size,mtime=excluded.mtime,'
-            'volume_id=excluded.volume_id,issue_ids=excluded.issue_ids',
+            'volume_id=excluded.volume_id,issue_ids=excluded.issue_ids,manual_match=excluded.manual_match',
             (root, relative_path, token, status, message,
-             size, mtime, volume_id, issue_ids)
+             size, mtime, volume_id, issue_ids, manual_match)
+        )
+
+    @staticmethod
+    def review_selection(token: str, root: str) -> Union[Row, None]:
+        """Find an editable preview without reopening imported or held copies."""
+        return get_db().execute(
+            "SELECT * FROM pack_inbox WHERE token=? AND root=? AND status IN ('review','matched','owned')",
+            (token, root)
+        ).fetchone()
+
+    @staticmethod
+    def set_manual_match(token: str, volume_id: int, issue_ids: str, message: str) -> None:
+        """Persist a reviewed per-file association; caller commits."""
+        get_db().execute(
+            "UPDATE pack_inbox SET volume_id=?,issue_ids=?,manual_match=1,status='matched',message=? WHERE token=?",
+            (volume_id, issue_ids, message, token)
         )
 
     @staticmethod

@@ -26,6 +26,8 @@ async function page(t, overrides = {}) {
     w.setInterval = (fn, delay) => state.timers.push({ fn, delay });
     w.HTMLElement.prototype.scrollIntoView = () => {};
     w.confirm = () => state.confirm;
+    w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+    w.HTMLDialogElement.prototype.close = function () { this.open = false; this.onclose?.(); };
     w.fetchAPI = async path => {
         if (path === '/pack-inbox') return { result: { folder: state.folder, items: state.items } };
         if (path === '/pack-downloads') return { result: state.jobs };
@@ -161,4 +163,40 @@ test('provider choices disable unsupported mirrors and submit the selected token
     assert.equal(el('#pack-download-status img'), null);
     await buttons[0].onclick();
     assert.deepEqual(state.calls.at(-1).data, { token: 'http', folder: '/inbox' });
+});
+
+
+test('series picker binds only the originating file and trusted frame selection', async t => {
+    const item = {status: 'review', relative_path: 'Week/Alternate #001.cbz', token: 'file-a', series_query: 'Alternate'};
+    const { w, el, state } = await page(t, {
+        items: [item],
+        respond: path => {
+            if (path === '/pack-inbox/match-options') return {title: 'Correct series', issues: [{id: 17, number: 1, owned: false}], selected: [17]};
+            if (path === '/pack-inbox/match') return {folder: '/inbox', items: [{...item, status: 'matched'}]};
+        }
+    });
+    el('.inbox-add-series').click();
+    assert.equal(el('#inbox-series-dialog').open, true);
+    assert.ok(el('#inbox-series-frame').src.includes('picker=file-a'));
+    const message = {type: 'pack-series-selected', token: 'file-a', volume_id: 4};
+    w.dispatchEvent(new w.MessageEvent('message', {origin: 'https://untrusted.test', source: el('#inbox-series-frame').contentWindow, data: message}));
+    await tick();
+    assert.equal(state.calls.length, 0);
+    w.dispatchEvent(new w.MessageEvent('message', {origin: w.location.origin, source: el('#inbox-series-frame').contentWindow, data: message}));
+    await tick();
+    assert.deepEqual(state.calls.at(-1), {path: '/pack-inbox/match', data: {token: 'file-a', volume_id: 4, issue_ids: [17]}});
+    assert.equal(el('#inbox-series-dialog').open, false);
+});
+
+test('ambiguous issue selection waits for explicit choice without importing', async t => {
+    const { w, el, state } = await page(t, {
+        items: [{status: 'review', relative_path: 'Unknown.cbz', token: 'b', series_query: 'Unknown'}],
+        respond: path => path === '/pack-inbox/match-options' ? {title: 'Series', selected: [], issues: [{id: 8, number: 1, owned: false}, {id: 9, number: 2, owned: true}]} : undefined
+    });
+    el('.inbox-add-series').click();
+    w.dispatchEvent(new w.MessageEvent('message', {origin: w.location.origin, source: el('#inbox-series-frame').contentWindow, data: {type: 'pack-series-selected', token: 'b', volume_id: 2}}));
+    await tick();
+    assert.equal(state.calls.length, 1);
+    assert.equal(el('#inbox-series-issues').classList.contains('hidden'), false);
+    assert.equal(el('#inbox-issue-selection').options[1].disabled, true);
 });

@@ -884,6 +884,10 @@ def api_pack_inbox_action(action: str):
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         raise InvalidKeyValue('body', 'Expected an object')
+    if action == 'match-options':
+        return return_api(pack_inbox.match_options(data.get('token'), data.get('volume_id')))
+    if action == 'match':
+        return return_api(pack_inbox.set_match(data.get('token'), data.get('volume_id'), data.get('issue_ids')))
     if action == 'scan':
         return return_api(pack_inbox.scan(data.get('folder')))
     if action == 'import':

@@ -65,6 +65,58 @@ class PackInbox(unittest.TestCase):
     def scan(self):
         return pack_inbox.scan(str(self.inbox))['items']
 
+    def test_manual_series_link_survives_rescan_and_imports_selected_issue(self):
+        source = self.comic('Different Name #001 (2016).cbz')
+        row = self.scan()[0]
+        options = pack_inbox.match_options(row['token'], 1)
+        self.assertEqual(options['selected'], [1])
+        linked = pack_inbox.set_match(row['token'], 1, [1])['items'][0]
+        self.assertEqual(linked['status'], 'matched')
+        rescanned = self.scan()[0]
+        self.assertEqual(rescanned['status'], 'matched')
+        result = pack_inbox.import_selected([rescanned['token']])['items'][0]
+        self.assertEqual(result['status'], 'imported')
+        self.assertTrue(source.exists())
+        self.assertEqual(self.db.execute('SELECT issue_id FROM issues_files').fetchone()[0], 1)
+
+    def test_manual_match_rejects_wrong_series_issue_and_changed_source(self):
+        source = self.comic('Different Name #001 (2016).cbz')
+        row = self.scan()[0]
+        with self.assertRaises(InvalidKeyValue):
+            pack_inbox.set_match(row['token'], 1, [2])
+        source.write_bytes(b'changed')
+        with self.assertRaises(InvalidKeyValue):
+            pack_inbox.set_match(row['token'], 1, [1])
+
+    def test_manual_match_does_not_reopen_imports_or_reuse_changed_file(self):
+        source = self.comic('Different Name #001 (2016).cbz')
+        row = self.scan()[0]
+        pack_inbox.set_match(row['token'], 1, [1])
+        source.write_bytes(b'changed')
+        os.utime(source, (1000000000, 1000000000))
+        self.assertEqual(self.scan()[0]['status'], 'review')
+        current = self.scan()[0]
+        pack_inbox.set_match(current['token'], 1, [1])
+        pack_inbox.import_selected([current['token']])
+        with self.assertRaises(InvalidKeyValue):
+            pack_inbox.set_match(current['token'], 2, [2])
+
+    def test_collection_prefix_and_explicit_one_shot_issue(self):
+        self.db.execute("UPDATE volumes SET title='Avengers Standoff: Welcome to Pleasant Hill', year=2016, special_version='one-shot' WHERE id=1")
+        self.comic('001 - Avengers Standoff - Welcome to Pleasant Hill #001 (2016).cbr')
+        row = self.scan()[0]
+        self.assertEqual(row['status'], 'matched')
+
+    def test_manual_match_migration_preserves_journal(self):
+        self.db.execute('ALTER TABLE pack_inbox RENAME TO original_inbox')
+        self.db.execute('CREATE TABLE pack_inbox(id INTEGER, token TEXT)')
+        self.db.execute("INSERT INTO pack_inbox VALUES(1,'existing')")
+        from backend.internals.db_migration import _migrate_pack_manual_matches
+        with patch('backend.internals.db_migration.get_db', return_value=self.cursor):
+            _migrate_pack_manual_matches()
+            _migrate_pack_manual_matches()
+        self.assertEqual(tuple(self.db.execute('SELECT token,manual_match FROM pack_inbox').fetchone()), ('existing', 0))
+
     def test_single_file_scan_excludes_neighbors_and_retains_original(self):
         source = self.comic('Alpha Comics 001 (2026).cbz')
         other = self.comic('Beta Comics 001 (2026).cbz')
@@ -221,7 +273,7 @@ class PackInbox(unittest.TestCase):
         self.db.commit()
         row = self.scan()[0]
         self.assertEqual(row['status'], 'matched')
-        self.assertNotIn('series_query', row)
+        self.assertEqual(row['series_query'], 'New Series')
 
     def managed_pack(self):
         source = self.comic('Managed/ready/Alpha Comics 001 (2026).cbz')

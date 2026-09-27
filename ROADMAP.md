@@ -62,6 +62,8 @@ an uncertain submission or partially completed import.
 - [x] Discover external qBittorrent category jobs in Activity with explicit
   completed-file review through Pack Inbox; no automatic import or client changes.
   Locally tested; NAS validation pending.
+- [ ] Investigate intermittent first-click Review Files failures/stale initial
+  results reported on Synology; a subsequent click succeeds. Server logs needed.
 - [ ] Verify library import while the original continues seeding.
 - [ ] Verify restart recovery, mapped paths, ownership checks and queue cleanup.
 - [ ] Verify both Copy and Complete seeding modes.
@@ -112,8 +114,9 @@ Kapowarr, followed by recurring automatic download and ingestion.
    extension is locally tested and still needs live confirmation.
 2. **GetComics pack downloads (implemented; manual flow user-exercised):** article
    preview, supported HTTP download links, progress, and ZIP extraction feed the
-   inbox. **Find / Add Series** opens normal series search; adding a series still
-   requires a user choice and a fresh scan. Mega, torrent, RAR/7z and multipart
+   inbox. **Find / Add Series** opens a floating series search and saves an explicit
+   per-file series/issue association, including existing library series.
+   This matching flow is locally tested; live validation is pending. Mega, torrent, RAR/7z and multipart
    pack handling remain outside the automated download/extraction flow.
 3. **Managed-pack cleanup (implemented; user-exercised):** verified imported
    sources are deleted from managed packs. **Finish Pack** previews and confirms
@@ -208,6 +211,6 @@ Kapowarr architecture. Complete and verify each slice separately.
 5. **Repeatable frontend tests (complete; locally verified):** Pack Inbox DOM
    regression checks now live in `tests/frontend`, with pinned dependencies,
    [setup instructions](tests/frontend/README.md) and a dedicated CI workflow.
-   Eight tests cover import selection, history, cleanup confirmation, subscriptions,
-   download choices and review-only category discovery in Activity. Browser appearance and live integrations still need
+   Ten tests cover import selection, history, cleanup confirmation, subscriptions,
+   download choices, per-file series selection and review-only category discovery. Browser appearance and live integrations still need
    separate validation.

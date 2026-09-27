@@ -2022,5 +2022,6 @@ class InboxJournalEntry(TypedDict):
     size: int
     mtime: str
     volume_id: Union[int, None]
+    manual_match: bool
     issue_ids: str
     destination: Union[str, None]

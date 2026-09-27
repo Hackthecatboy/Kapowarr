@@ -161,10 +161,17 @@ GetComics hosting behavior still needs verification with a small test pack.
 
 ## Add a missing series from review
 
-Unmatched rows offer **Find / Add Series**, opening the existing Add Volume search
-in a new tab with the parsed series title. Select the correct series/edition and
-root folder there. Return to Pack Inbox and click **Save Folder & Scan** to rerun
-matching; Refresh Results alone only reads the previous scan.
+**Find / Add Series** opens the normal Add Volume search in a floating window,
+with the filename's series title filled in. Pick an existing library series or
+add a new one using the normal root-folder and monitoring controls. The selection
+links only the file that opened the window. A clear issue number is selected
+automatically; otherwise choose the issue(s) contained in the file. Existing owned
+issues cannot be overwritten. Linking does not import files or change series aliases.
+
+Per-file links are saved across rescans and restarts and rechecked before import.
+Changed source files lose their old manual association and require another review.
+Imported or interrupted copies cannot be reassigned. A collection ordering prefix
+such as `001 -` is ignored when an explicit `#001` issue marker follows.
 
 A missing match can also mean missing issue metadata or a title/year mismatch in
 an existing series. Search shows already-added series; refresh that volume's

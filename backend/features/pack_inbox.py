@@ -3,16 +3,18 @@
 import hashlib
 import json
 import os
+import re
 from contextlib import contextmanager
 from pathlib import Path
 from sqlite3 import Row
 from threading import Lock
 from time import time
-from typing import BinaryIO, Iterator, List, Optional, Tuple, TypedDict, cast
+from typing import (Any, BinaryIO, Dict, Iterator, List,
+                    Optional, Tuple, TypedDict, cast)
 from uuid import uuid4
 
 from backend.base.custom_exceptions import InvalidKeyValue
-from backend.base.definitions import InboxJournalEntry
+from backend.base.definitions import FilenameData, InboxJournalEntry
 from backend.base.file_extraction import extract_filename_data
 from backend.implementations.matching import match_title
 from backend.implementations.naming import mass_rename
@@ -110,6 +112,67 @@ def safe_source(root: Path, relative: str) -> Path:
     return path
 
 
+def filename_data(name: str) -> FilenameData:
+    """Ignore a collection ordering prefix only when an explicit issue follows."""
+    if re.search(r'#\d', name):
+        name = re.sub(r'^\d+\s*-\s*', '', name)
+    return extract_filename_data(name, assume_volume_number=False, fix_year=True)
+
+
+def manual_identity(volume_id: int, ids: List[int]) -> Tuple[Optional[Row], List[int], str]:
+    """Validate explicit issue membership and current ownership before copying."""
+    volume = next((v for v in PackInboxDB.matching_volumes() if v['id'] == volume_id), None)
+    available = {i['id'] for i in PackInboxDB.volume_issues(volume_id)} if volume else set()
+    if not volume or not ids or not set(ids) <= available:
+        return None, [], 'Selected series or issues no longer exist; choose again'
+    reason = 'Already owned (all or part of this file)' if any(PackInboxDB.existing_issue_file(i) for i in ids) else ''
+    return volume, ids, reason
+
+
+def match_options(token: object, volume_id: object) -> Dict[str, Any]:
+    """Return issue choices for the library series explicitly picked by a user."""
+    root = valid_root(Settings().sv.pack_inbox_folder)
+    row = PackInboxDB.review_selection(token, str(root)) if isinstance(token, str) else None
+    if row is None or type(volume_id) is not int:
+        raise InvalidKeyValue('match', 'Preview expired; refresh the inbox and choose again')
+    try:
+        source = safe_source(root, row['relative_path'])
+        stat = source.stat()
+    except (OSError, ValueError) as error:
+        raise InvalidKeyValue('match', 'Source unavailable; scan again before choosing a series') from error
+    if (stat.st_size != row['size'] or str(stat.st_mtime_ns) != row['mtime']
+            or source.suffix.lower() not in COMICS or stat.st_size == 0 or time() - stat.st_mtime < 30):
+        raise InvalidKeyValue('match', 'File changed or is still settling; scan again before selecting a series')
+    volume = next((v for v in PackInboxDB.matching_volumes() if v['id'] == volume_id), None)
+    if volume is None:
+        raise InvalidKeyValue('match', 'Add the selected series to the library first')
+    issues = PackInboxDB.volume_issues(volume_id)
+    number = filename_data(source.name)['issue_number']
+    bounds = number if isinstance(number, tuple) else (number, number)
+    selected = [i['id'] for i in issues if number is not None and bounds[0] <= i['calculated_issue_number'] <= bounds[1]]
+    if number is None and len(issues) == 1:
+        selected = [issues[0]['id']]
+    return dict(title=volume['title'], volume_id=volume_id, selected=selected,
+                issues=[dict(id=i['id'], number=i['calculated_issue_number'], owned=bool(PackInboxDB.existing_issue_file(i['id']))) for i in issues])
+
+
+def set_match(token: object, volume_id: object, issue_ids: object) -> InboxListing:
+    """Save a per-file selection without importing or changing series aliases."""
+    with inbox_operation():
+        match_options(token, volume_id)
+        token, volume_id = cast(str, token), cast(int, volume_id)
+        if (not isinstance(issue_ids, list) or not 1 <= len(issue_ids) <= 100
+                or any(type(i) is not int for i in issue_ids)):
+            raise InvalidKeyValue('match', 'Choose the issues contained in this file')
+        ids = sorted(set(issue_ids))
+        volume, ids, reason = manual_identity(volume_id, ids)
+        if reason or volume is None:
+            raise InvalidKeyValue('match', reason)
+        PackInboxDB.set_manual_match(token, volume_id, json.dumps(ids), f"Selected: {volume['title']} — {len(ids)} issue(s)")
+        get_db().connection.commit()
+        return listing()
+
+
 def classify(name: str) -> Tuple[Optional[Row], List[int], str]:
     """Match a filename to one library edition and its issue IDs.
 
@@ -118,8 +181,7 @@ def classify(name: str) -> Tuple[Optional[Row], List[int], str]:
         a unique missing-issue match. A matched but owned edition retains its
         volume and issue IDs alongside an ownership reason.
     """
-    data = extract_filename_data(
-        name, assume_volume_number=False, fix_year=True)
+    data = filename_data(name)
     number = data['issue_number']
     standalone = number is None and data['special_version'] in (
         None, 'tpb', 'one-shot', 'hard-cover', 'omnibus')
@@ -139,7 +201,9 @@ def classify(name: str) -> Tuple[Optional[Row], List[int], str]:
             if volume['special_version'] not in ('tpb', 'one-shot', 'hard-cover', 'omnibus'):
                 continue
         elif volume['special_version'] not in (None, 'normal'):
-            continue
+            if (volume['special_version'] not in ('tpb', 'one-shot', 'hard-cover', 'omnibus')
+                    or len(PackInboxDB.volume_issues(volume['id'])) != 1):
+                continue
         if data['volume_number'] is not None and data['volume_number'] != volume['volume_number']:
             continue
         if standalone:
@@ -257,9 +321,8 @@ def listing() -> InboxListing:
         source = Path(folder) / row['relative_path']
         row['can_cleanup'] = row['status'] == 'imported' and _managed_source(
             source) is not None and source.is_file()
-        if row['status'] == 'review' and row['message'] == 'No library match':
-            data = extract_filename_data(Path(row['relative_path']).name,
-                                         assume_volume_number=False, fix_year=True)
+        if row['status'] in ('review', 'matched', 'owned'):
+            data = filename_data(Path(row['relative_path']).name)
             row['series_query'] = data['series']
     return dict(folder=folder, items=rows)
 
@@ -317,6 +380,7 @@ def scan(folder: object, *, filename: Optional[str] = None) -> InboxListing:
                     continue
             size, mtime, volume_id, ids = 0, '', None, []
             status, message = 'review', ''
+            manual = False
             try:
                 source = safe_source(root, relative)
                 stat = source.stat()
@@ -326,7 +390,9 @@ def scan(folder: object, *, filename: Optional[str] = None) -> InboxListing:
                 elif stat.st_size == 0 or time() - stat.st_mtime < 30:
                     message = 'Empty or recently modified file; wait until completed, then scan again'
                 else:
-                    volume, ids, message = classify(source.name)
+                    manual = bool(old and old['manual_match'] and old['size'] == size and old['mtime'] == mtime)
+                    volume, ids, message = (manual_identity(old['volume_id'], json.loads(old['issue_ids']))
+                                            if manual else classify(source.name))
                     if volume is not None:
                         volume_id = volume['id']
                         if not message:
@@ -338,7 +404,7 @@ def scan(folder: object, *, filename: Optional[str] = None) -> InboxListing:
                 message = str(error)
             PackInboxDB.save_scan(
                 str(root), relative, uuid4().hex, status, message,
-                size, mtime, volume_id, json.dumps(ids)
+                size, mtime, volume_id, json.dumps(ids), manual
             )
         cursor.connection.commit()
         return listing()
@@ -352,7 +418,8 @@ def _prepare_import(
     before = source.stat()
     if before.st_size != row['size'] or str(before.st_mtime_ns) != row['mtime']:
         raise ValueError('File changed since preview; scan again')
-    volume, ids, reason = classify(source.name)
+    volume, ids, reason = (manual_identity(row['volume_id'], json.loads(row['issue_ids']))
+                           if row['manual_match'] else classify(source.name))
     if reason or volume is None or volume['id'] != row['volume_id'] or ids != json.loads(row['issue_ids']):
         raise ValueError(reason or 'Library match changed; scan again')
     library = Path(volume['folder'])

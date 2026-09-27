@@ -614,7 +614,7 @@ CREATE TABLE IF NOT EXISTS pack_inbox(
     id INTEGER PRIMARY KEY, root TEXT NOT NULL, relative_path TEXT NOT NULL,
     token TEXT NOT NULL UNIQUE, status TEXT NOT NULL, message TEXT NOT NULL,
     size INTEGER NOT NULL, mtime TEXT NOT NULL, volume_id INTEGER,
-    issue_ids TEXT NOT NULL, destination TEXT,
+    issue_ids TEXT NOT NULL, destination TEXT, manual_match BOOL NOT NULL DEFAULT 0,
     UNIQUE(root,relative_path)
 );
 """

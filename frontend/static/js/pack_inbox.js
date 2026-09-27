@@ -60,6 +60,75 @@ usingApiKey().then(apiKey => {
     const status = PackEls.inbox.status;
     const importButton = PackEls.inbox.import;
     let busy = false;
+    const seriesDialog = document.querySelector('#inbox-series-dialog');
+    const seriesFrame = document.querySelector('#inbox-series-frame');
+    const seriesMessage = document.querySelector('#inbox-series-message');
+    const issueForm = document.querySelector('#inbox-series-issues');
+    const issueSelection = document.querySelector('#inbox-issue-selection');
+    let picker = null;
+    let matching = false;
+    function openSeries(item) {
+        picker = {token: item.token, volume_id: null};
+        matching = false;
+        document.querySelector('#inbox-series-file').textContent = item.relative_path;
+        seriesMessage.textContent = 'Select a library series, or add one using the search below.';
+        issueForm.classList.add('hidden');
+        seriesFrame.src = `${url_base}/add?q=${encodeURIComponent(item.series_query)}&picker=${encodeURIComponent(item.token)}`;
+        seriesDialog.showModal();
+    }
+    document.querySelector('#inbox-series-close').onclick = () => seriesDialog.close();
+    seriesDialog.onclose = () => { picker = null; seriesFrame.src = 'about:blank'; };
+    async function matchPost(action, data) {
+        return (await (await sendAPI('POST', `/pack-inbox/${action}`, apiKey, {}, data)).json()).result;
+    }
+    async function matchError(error) {
+        let message = 'Could not link this file. Refresh the inbox and try again.';
+        try { const body = await error.json(); if (body.error === 'InvalidKeyValue') message = body.result.value; } catch (_) {}
+        seriesMessage.textContent = message;
+    }
+    async function saveMatch(selection, ids) {
+        const result = await matchPost('match', {...selection, issue_ids: ids});
+        if (picker !== selection) return;
+        render(result);
+        seriesDialog.close();
+        status.textContent = 'Series linked to this file. Select it when ready to import.';
+    }
+    window.addEventListener('message', async event => {
+        if (!picker || matching || event.origin !== window.location.origin || event.source !== seriesFrame.contentWindow
+            || event.data?.type !== 'pack-series-selected' || event.data.token !== picker.token
+            || !Number.isInteger(event.data.volume_id)) return;
+        const selection = picker;
+        selection.volume_id = event.data.volume_id;
+        matching = true;
+        seriesMessage.textContent = 'Checking issue matches…';
+        try {
+            const options = await matchPost('match-options', selection);
+            if (picker !== selection) return;
+            issueSelection.replaceChildren();
+            for (const issue of options.issues) {
+                const option = document.createElement('option');
+                option.value = issue.id;
+                option.textContent = `#${issue.number}${issue.owned ? ' — already owned' : ''}`;
+                option.disabled = issue.owned;
+                option.selected = options.selected.includes(issue.id) && !issue.owned;
+                issueSelection.appendChild(option);
+            }
+            issueForm.classList.remove('hidden');
+            seriesMessage.textContent = `Selected series: ${options.title}`;
+            if (options.selected.length && options.selected.every(id => options.issues.some(i => i.id === id && !i.owned)))
+                await saveMatch(selection, options.selected);
+        } catch (error) { if (picker === selection) await matchError(error); }
+        finally { if (picker === selection) matching = false; }
+    });
+    issueForm.onsubmit = async event => {
+        event.preventDefault();
+        if (!picker || matching) return;
+        const selection = picker;
+        matching = true;
+        try { await saveMatch(selection, [...issueSelection.selectedOptions].map(option => Number(option.value))); }
+        catch (error) { if (picker === selection) await matchError(error); }
+        finally { if (picker === selection) matching = false; }
+    };
     const selected = () => [...rows.querySelectorAll('tr:not([hidden]) input:checked')].map(input => input.value);
     function controls() {
         form.querySelectorAll('button,input').forEach(el => el.disabled = busy);
@@ -112,7 +181,9 @@ usingApiKey().then(apiKey => {
             }
             const add = row.querySelector('.inbox-add-series');
             if (item.series_query) {
-                add.href = `${url_base}/add?q=${encodeURIComponent(item.series_query)}`;
+                add.href = '#';
+                add.removeAttribute('target');
+                add.onclick = event => { event.preventDefault(); openSeries(item); };
             } else {
                 add.parentElement.remove();
             }

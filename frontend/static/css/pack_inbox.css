@@ -36,3 +36,12 @@
 #pack-inbox-page #inbox-results p { margin-block: .35rem; }
 #pack-inbox-page #inbox-results [hidden], #pack-inbox-page #inbox-results tr[hidden] { display: none; }
 #inbox-filter, #inbox-search { padding: .5rem; }
+
+#inbox-series-dialog { margin: auto; padding: 1rem; width: min(75rem, 95vw); height: 90dvh; max-height: 95dvh; color: var(--text-color); background: var(--background-color); border: 1px solid var(--border-color); }
+#inbox-series-dialog[open] { display: flex; flex-direction: column; gap: .5rem; }
+#inbox-series-dialog::backdrop { background: rgb(0 0 0 / 65%); }
+.inbox-series-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+#inbox-series-frame { flex: 1; min-height: 0; width: 100%; border: 0; }
+#inbox-series-file { overflow-wrap: anywhere; }
+#inbox-series-dialog button { padding: .5rem 1rem; background: var(--accent-color); color: var(--nav-background-color); }
+#inbox-series-issues select { display: block; width: 100%; margin-block: .5rem; }
