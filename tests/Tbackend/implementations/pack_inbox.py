@@ -277,3 +277,26 @@ class PackInbox(unittest.TestCase):
             DatabaseMigrationHandler.handlers[55]()
             DatabaseMigrationHandler.handlers[55]()
         self.assertEqual(self.scan(),[])
+
+    def test_unnumbered_graphic_novel_import(self):
+        self.db.execute("UPDATE volumes SET title='Doctor Strange: Endless Nightmare', special_version='tpb' WHERE id=1")
+        source = self.comic('Doctor Strange - Endless Nightmare (2026) (digital) (Marika-Empire).cbz')
+        row = self.scan()[0]
+        self.assertEqual(row['status'], 'matched')
+        result = pack_inbox.import_selected([row['token']])['items'][0]
+        self.assertEqual(result['status'], 'imported')
+        self.assertEqual(Path(result['destination']).read_bytes(), source.read_bytes())
+        self.assertIn('Already owned', pack_inbox.classify(source.name)[2])
+
+    def test_unnumbered_book_requires_unique_standalone_edition(self):
+        name = 'Alpha Comics (2026).cbz'
+        self.assertIsNone(pack_inbox.classify(name)[0])  # An ongoing series with only one issue is not a standalone.
+        self.db.execute("UPDATE volumes SET special_version='tpb' WHERE id=1")
+        self.assertEqual(pack_inbox.classify(name)[1], [1])
+        self.assertIsNone(pack_inbox.classify('Alpha Comics (2025).cbz')[0])
+        self.assertIsNone(pack_inbox.classify('Alpha Comics.cbz')[0])
+        self.db.execute("UPDATE volumes SET title='Alpha Comics',special_version='one-shot' WHERE id=2")
+        self.assertIn('Ambiguous', pack_inbox.classify(name)[2])
+        self.db.execute("UPDATE volumes SET title='Beta Comics' WHERE id=2")
+        self.db.execute("INSERT INTO issues(id,volume_id,comicvine_id,issue_number,calculated_issue_number) VALUES(3,1,3,'2',2)")
+        self.assertIsNone(pack_inbox.classify(name)[0])

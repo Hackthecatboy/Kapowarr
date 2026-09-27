@@ -61,8 +61,11 @@ def safe_source(root, relative):
 def classify(name):
     data = extract_filename_data(name, assume_volume_number=False, fix_year=True)
     number = data['issue_number']
-    if number is None or data['special_version']:
+    standalone = number is None and data['special_version'] in (None, 'tpb', 'one-shot', 'hard-cover', 'omnibus')
+    if (number is None and not standalone) or (number is not None and data['special_version']):
         return None, [], 'No explicit ordinary issue number; review required'
+    if standalone and data['year'] is None:
+        return None, [], 'Unnumbered book needs a year and a unique single-issue library edition'
     bounds = number if isinstance(number, tuple) else (number, number)
     candidates = []
     volumes = get_db().execute('SELECT id,title,alt_title,year,volume_number,special_version,folder FROM volumes').fetchall()
@@ -71,13 +74,21 @@ def classify(name):
             continue
         if data['annual'] != ('annual' in volume['title'].lower()):
             continue
-        if volume['special_version'] not in (None, 'normal'):
+        if standalone:
+            if volume['special_version'] not in ('tpb', 'one-shot', 'hard-cover', 'omnibus'):
+                continue
+        elif volume['special_version'] not in (None, 'normal'):
             continue
         if data['volume_number'] is not None and data['volume_number'] != volume['volume_number']:
             continue
-        issues = get_db().execute('SELECT id,calculated_issue_number,date FROM issues WHERE volume_id=? AND calculated_issue_number BETWEEN ? AND ? ORDER BY calculated_issue_number', (volume['id'], *bounds)).fetchall()
-        if not issues or issues[0]['calculated_issue_number'] != bounds[0] or issues[-1]['calculated_issue_number'] != bounds[1]:
-            continue
+        if standalone:
+            issues = get_db().execute('SELECT id,calculated_issue_number,date FROM issues WHERE volume_id=?', (volume['id'],)).fetchall()
+            if len(issues) != 1:
+                continue
+        else:
+            issues = get_db().execute('SELECT id,calculated_issue_number,date FROM issues WHERE volume_id=? AND calculated_issue_number BETWEEN ? AND ? ORDER BY calculated_issue_number', (volume['id'], *bounds)).fetchall()
+            if not issues or issues[0]['calculated_issue_number'] != bounds[0] or issues[-1]['calculated_issue_number'] != bounds[1]:
+                continue
         years = {volume['year']} | {int(i['date'][:4]) for i in issues if i['date'] and i['date'][:4].isdigit()}
         if data['year'] is not None and data['year'] not in years:
             continue

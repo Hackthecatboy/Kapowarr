@@ -47,8 +47,11 @@ folder for larger inboxes.
   explicit issue number/range, volume number when present, and publication or
   series year when present. Missing year information can match only if the other
   metadata produces a unique candidate. No series are added automatically.
-- Ordinary single issues and explicit issue ranges can match. Special editions,
-  unclear numbering and multiple plausible series require review. A range must
+- Ordinary single issues and explicit issue ranges can match. Unnumbered books
+  can match a unique title/year edition marked as a trade paperback, one-shot,
+  hardcover or omnibus when that library edition has exactly one issue. A normal
+  ongoing series with only one issue does not qualify. Unclear numbering and
+  multiple plausible editions still require review. A range must
   have matching endpoints in the library.
 - Only missing issues are imported. A multi-issue file covering an already-owned
   issue is held out; individual missing comic files elsewhere in the same pack
