@@ -33,6 +33,16 @@ HTTP_CLIENTS = {ID.DDL, ID.MEDIAFIRE, ID.WETRANSFER, ID.PIXELDRAIN,
                 ID.MEDIAFIRE_FOLDER, ID.PIXELDRAIN_FOLDER}
 
 
+def has_active_download() -> bool:
+    """Return whether a pack download or extraction is active in this process.
+
+    This is a scheduling hint; start() still enforces the single-download
+    limit while holding the same lock.
+    """
+    with _LOCK:
+        return bool(_ACTIVE)
+
+
 def article_url(value):
     if not isinstance(value, str):
         raise InvalidKeyValue('url', 'Enter a GetComics article URL')
