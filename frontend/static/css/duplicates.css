@@ -3,9 +3,17 @@
 #duplicates-form input { padding: .5rem; }
 #duplicates-form button { padding: .6rem 1rem; background: var(--accent-color); color: var(--nav-background-color); border-radius: 4px; }
 #duplicates-results section { padding: 1rem; margin-block: 1rem; border: 1px solid var(--border-color); }
-#duplicates-results li { margin: .5rem 0 .5rem 1.5rem; overflow-wrap: anywhere; }
 
-#duplicates-results select { max-width: 100%; padding: .5rem; }
-.duplicate-selection label { display: block; overflow-wrap: anywhere; margin-block: .65rem; }
-#duplicates-results button { padding: .6rem 1rem; background: var(--accent-color); color: var(--nav-background-color); }
+#duplicates-results .duplicate-group { padding: .75rem 1rem; margin-block: .75rem; border: 1px solid var(--border-color); }
+.duplicate-group summary { cursor: pointer; font-weight: bold; overflow-wrap: anywhere; }
+.duplicate-folder, .duplicate-files { overflow-wrap: anywhere; }
+.duplicate-file { display: flex; align-items: baseline; gap: 1rem; padding-block: .5rem; border-top: 1px solid var(--border-color); }
+.duplicate-file label { flex-shrink: 0; cursor: pointer; }
+.duplicate-filename { min-width: 0; }
+#duplicates-results button { margin-top: .75rem; padding: .6rem 1rem; background: var(--accent-color); color: var(--nav-background-color); }
 #duplicates-results button:disabled { opacity: .5; }
+#duplicates-results p:empty { display: none; }
+@media (max-width: 600px) {
+    .duplicate-file { flex-wrap: wrap; gap: .5rem 1rem; }
+    .duplicate-filename { flex-basis: 100%; }
+}

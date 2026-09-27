@@ -46,10 +46,16 @@ files can change afterward. Automatic import deduplication is not implemented by
 
 ## Delete verified duplicates
 
-For an exact group, select **Copy to keep**, check individual copies to remove,
+Expand an exact group, select **Keep** beside the copy to retain, check **Delete**
+beside individual copies to remove,
 and choose **Delete Selected Duplicates**. The confirmation lists the paths to
 remove and the path to retain. No deletion boxes are checked by default. This is
 permanent deletion of library paths, not a recycle bin operation.
+
+Groups start collapsed. Each file appears in one row, with a shared folder shown
+once. Files and groups sort naturally; an unsuffixed copy precedes `(1)`, `(2)`,
+and `(10)`. The first copy is the initial keeper; choosing another keeper clears
+and disables its Delete checkbox.
 
 Kapowarr rehashes the retained and selected files, checks their paths and current
 issue bindings, and refuses stale/changed files, symlinks, cross-volume removal,
