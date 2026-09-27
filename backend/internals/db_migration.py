@@ -1387,3 +1387,13 @@ def _migrate_pack_subscriptions():
     for statement in PACK_SUBSCRIPTIONS_SCHEMA.split(';'):
         if statement.strip():
             get_db().execute(statement)
+
+
+@DatabaseMigrationHandler.register_handler(58)
+def _migrate_pack_weekday():
+    cursor = get_db()
+    columns = {row[1] for row in cursor.execute('PRAGMA table_info(pack_subscriptions)')}
+    if 'weekday' not in columns:
+        cursor.execute('ALTER TABLE pack_subscriptions ADD COLUMN weekday INTEGER NOT NULL DEFAULT 6')
+    if 'last_scheduled' not in columns:
+        cursor.execute('ALTER TABLE pack_subscriptions ADD COLUMN last_scheduled TEXT')

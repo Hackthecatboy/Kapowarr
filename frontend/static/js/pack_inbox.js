@@ -211,6 +211,18 @@ usingApiKey().then(apiKey => {
                     catch (error) { discoveryStatus.textContent = 'Could not change subscription.'; }
                 };
                 row.append(`${sub.query} / ${sub.link_filter} / ${sub.service} — ${sub.automatic ? 'Automatic download' : 'Review only'} — ${sub.message}. Last check: ${sub.last_checked || 'Not checked yet'} `, toggle);
+                const day = document.querySelector('#pack-weekday').cloneNode(true);
+                day.removeAttribute('id'); day.value = String(sub.weekday);
+                day.onchange = () => { day.dataset.dirty = 'true'; };
+                day.setAttribute('aria-label', 'Check weekday for ' + sub.query);
+                const save = document.createElement('button'); save.type = 'button'; save.textContent = 'Save Day';
+                save.onclick = async () => {
+                    save.disabled = true;
+                    try { await discoveryPost('schedule', {id: sub.id, weekday: Number(day.value)}); await refreshSubscriptions(); }
+                    catch (_) { discoveryStatus.textContent = 'Could not save weekday.'; }
+                    finally { save.disabled = false; }
+                };
+                row.append(' Check every ', day, save);
                 rows.append(row);
             }
             const releases = document.querySelector('#pack-subscription-releases'); releases.replaceChildren();
@@ -223,8 +235,9 @@ usingApiKey().then(apiKey => {
         try {
             await discoveryPost('create', {query: queryInput.value, link_filter: document.querySelector('#pack-link-filter').value,
                 service: document.querySelector('#pack-service').value, folder: packFolder.value,
+                weekday: Number(document.querySelector('#pack-weekday').value),
                 automatic: document.querySelector('#pack-sub-mode').value === 'download'});
-            discoveryStatus.textContent = 'Subscription saved. Checks run hourly; use Check Subscriptions Now to check sooner.';
+            discoveryStatus.textContent = 'Subscription saved. Checks run weekly on the selected day; use Check Subscriptions Now to check sooner.';
             await refreshSubscriptions();
         } catch (error) {
             try { discoveryStatus.textContent = (await error.json()).result.value; }
@@ -236,7 +249,10 @@ usingApiKey().then(apiKey => {
         catch (_) { discoveryStatus.textContent = 'Could not queue subscription check.'; }
     };
     refreshSubscriptions();
-    setInterval(() => { if (!document.hidden) refreshSubscriptions(); }, 10000);
+    setInterval(() => {
+        const subscriptions = document.querySelector('#pack-subscriptions');
+        if (!document.hidden && !subscriptions.contains(document.activeElement) && !subscriptions.querySelector('[data-dirty]')) refreshSubscriptions();
+    }, 10000);
     document.querySelector('#pack-jobs-refresh').onclick = refreshJobs;
     refreshJobs();
     setInterval(() => { if (!document.hidden) refreshJobs(); }, 5000);

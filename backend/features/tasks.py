@@ -908,9 +908,9 @@ class CheckPackSubscriptions(LibraryTask):
     def issue_id(self) -> None:
         return None
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, force: bool = False) -> None:
+        self.force = force
 
     def run(self) -> None:
         from backend.features.pack_subscriptions import check
-        check()
+        check(force=self.force)

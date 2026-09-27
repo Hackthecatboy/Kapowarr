@@ -53,12 +53,14 @@ def create(data):
         raise InvalidKeyValue('link_filter', 'Enter identifying text from the desired download link label, such as Marvel')
     if data.get('service') not in SERVICES or type(data.get('automatic')) is not bool:
         raise InvalidKeyValue('subscription', 'Choose a supported service and download mode')
+    weekday = data.get('weekday', datetime.now().weekday())
+    _validate_weekday(weekday)
     root = downloads.download_root(data.get('folder'))
     cursor = get_db()
     if cursor.execute('SELECT count(*) FROM pack_subscriptions').fetchone()[0] >= 20:
         raise InvalidKeyValue('subscription', 'Maximum 20 subscriptions')
-    cursor.execute('INSERT INTO pack_subscriptions(query,link_filter,service,folder,automatic,created) VALUES(?,?,?,?,?,?)',
-                   (query.strip(), label.strip(), data['service'], str(root), data['automatic'], datetime.now(timezone.utc).date().isoformat()))
+    cursor.execute('INSERT INTO pack_subscriptions(query,link_filter,service,folder,automatic,created,weekday) VALUES(?,?,?,?,?,?,?)',
+                   (query.strip(), label.strip(), data['service'], str(root), data['automatic'], datetime.now(timezone.utc).date().isoformat(), weekday))
     cursor.connection.commit()
     return listing()
 
@@ -72,6 +74,21 @@ def toggle(ident, enabled):
     return listing()
 
 
+def _validate_weekday(weekday):
+    if type(weekday) is not int or not 0 <= weekday <= 6:
+        raise InvalidKeyValue('weekday', 'Choose a weekday from Monday to Sunday')
+
+
+def schedule(ident, weekday):
+    _validate_weekday(weekday)
+    if type(ident) is not int:
+        raise InvalidKeyValue('subscription', 'Choose a subscription')
+    cursor = get_db()
+    cursor.execute('UPDATE pack_subscriptions SET weekday=? WHERE id=?', (weekday, ident))
+    cursor.connection.commit()
+    return listing()
+
+
 def _release_status(ident, article, status, message):
     cursor = get_db()
     cursor.execute('UPDATE pack_subscription_releases SET status=?,message=? WHERE subscription_id=? AND article=?',
@@ -79,10 +96,19 @@ def _release_status(ident, article, status, message):
     cursor.connection.commit()
 
 
-def check():
+def check(force=False):
     cursor = get_db()
     subscriptions = cursor.execute('SELECT * FROM pack_subscriptions WHERE enabled=1').fetchalldict()
     for subscription in subscriptions:
+        now = datetime.now()  # Follow the server/container timezone.
+        today = now.date().isoformat()
+        if not force:
+            if now.weekday() != subscription['weekday'] or subscription['last_scheduled'] == today:
+                continue
+            # Persist before network access: restarts and failed requests must not
+            # turn one weekly check into hourly requests for the rest of the day.
+            cursor.execute('UPDATE pack_subscriptions SET last_scheduled=? WHERE id=?', (today, subscription['id']))
+            cursor.connection.commit()
         try:
             # Bounded discovery; older pages are available via explicit historical search.
             for page in range(1, 4):

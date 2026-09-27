@@ -74,7 +74,7 @@ class PackSubscriptions(unittest.TestCase):
         with patch.object(subscriptions, 'search', return_value=dict(articles=articles, has_more=False)), \
                 patch.object(downloads, 'preview', return_value=dict(choices=[dict(token='one', label='Marvel Main Server', service='GetComics', supported=True)])), \
                 patch.object(downloads, 'start', return_value=dict(id='job')) as start:
-            subscriptions.check(); subscriptions.check()
+            subscriptions.check(force=True); subscriptions.check(force=True)
         start.assert_called_once_with('one', str(self.root))
         states = {row['article']: row['status'] for row in subscriptions.listing()['releases']}
         self.assertEqual(states['https://getcomics.org/old/'], 'review')
@@ -84,16 +84,63 @@ class PackSubscriptions(unittest.TestCase):
         with patch.object(subscriptions, 'search', return_value=dict(articles=articles, has_more=False)), \
                 patch.object(downloads, 'preview', return_value=dict(choices=[choice, choice])), \
                 patch.object(downloads, 'start') as start:
-            subscriptions.check()
+            subscriptions.check(force=True)
         start.assert_not_called()
 
     def test_paused_and_review_only_subscriptions_do_not_download(self):
         self.subscribe(False)
         with patch.object(subscriptions, 'search', return_value=dict(articles=[dict(url='https://getcomics.org/new/', title='2026.09.16 Weekly Pack')], has_more=False)), \
                 patch.object(downloads, 'start') as start:
-            subscriptions.check()
+            subscriptions.check(force=True)
         start.assert_not_called()
         subscriptions.toggle(1, False)
         with patch.object(subscriptions, 'search') as search:
-            subscriptions.check()
+            subscriptions.check(force=True)
         search.assert_not_called()
+
+    def test_weekly_schedule_persists_and_manual_check_bypasses_day(self):
+        from datetime import datetime
+        self.subscribe(False)
+        today = datetime.now().weekday()
+        subscriptions.schedule(1, (today + 1) % 7)
+        with patch.object(subscriptions, 'search', return_value=dict(articles=[], has_more=False)) as search:
+            subscriptions.check()
+            search.assert_not_called()
+            subscriptions.check(force=True)
+            self.assertEqual(search.call_count, 1)
+            subscriptions.schedule(1, today)
+            subscriptions.check()
+            subscriptions.check()
+            self.assertEqual(search.call_count, 2)
+            subscriptions.check(force=True)
+            self.assertEqual(search.call_count, 3)
+            from datetime import timedelta
+            with patch.object(subscriptions, 'datetime', wraps=datetime) as clock:
+                clock.now.return_value = datetime.now() + timedelta(days=7)
+                subscriptions.check()
+            self.assertEqual(search.call_count, 4)
+        self.assertEqual(subscriptions.listing()['subscriptions'][0]['weekday'], today)
+
+    def test_invalid_weekdays_and_failure_does_not_retry_hourly(self):
+        from datetime import datetime
+        self.subscribe(False)
+        for value in (-1, 7, True, 'Monday', None):
+            with self.assertRaises(InvalidKeyValue): subscriptions.schedule(1, value)
+        subscriptions.schedule(1, datetime.now().weekday())
+        with patch.object(subscriptions, 'search', side_effect=RuntimeError('offline')) as search:
+            subscriptions.check()
+            subscriptions.check()
+            search.assert_called_once()
+
+    def test_weekday_migration_preserves_existing_subscriptions(self):
+        from backend.internals.db_migration import _migrate_pack_weekday
+        self.subscribe(False)
+        self.cursor.execute('ALTER TABLE pack_subscriptions DROP COLUMN weekday')
+        self.cursor.execute('ALTER TABLE pack_subscriptions DROP COLUMN last_scheduled')
+        with patch('backend.internals.db_migration.get_db', return_value=self.cursor):
+            _migrate_pack_weekday()
+            _migrate_pack_weekday()  # Earlier migrations may already use current schema.
+        row = subscriptions.listing()['subscriptions'][0]
+        self.assertEqual(row['query'], 'weekly pack')
+        self.assertEqual(row['weekday'], 6)
+        self.assertIsNone(row['last_scheduled'])

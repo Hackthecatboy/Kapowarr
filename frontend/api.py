@@ -870,8 +870,10 @@ def api_pack_subscription_action(action):
         return return_api(pack_subscriptions.create(data))
     if action == 'toggle':
         return return_api(pack_subscriptions.toggle(data.get('id'), data.get('enabled')))
+    if action == 'schedule':
+        return return_api(pack_subscriptions.schedule(data.get('id'), data.get('weekday')))
     if action == 'check':
-        return return_api(TaskHandler().add(TaskHandler.tasks['pack_subscriptions']()))
+        return return_api(TaskHandler().add(TaskHandler.tasks['pack_subscriptions'](force=True)))
     raise InvalidKeyValue('action', action)
 
 

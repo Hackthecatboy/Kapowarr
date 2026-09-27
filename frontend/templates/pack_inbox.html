@@ -17,11 +17,13 @@
 </form>
 <div id="pack-history-results"></div>
 <h3>Subscribe to new dated releases</h3>
-<p>Checks hourly from today's release date onward. Match one download label and service; ambiguous links require review. Downloads go to the writable folder below. Importing remains manual.</p>
+<p>Checks once on your selected weekday, using the server/container timezone, from today's release date onward. Match one download label and service; ambiguous links require review. Downloads go to the writable folder below. Importing remains manual.</p>
 <label for="pack-link-filter">Download label contains (for example Marvel)</label>
 <input id="pack-link-filter" placeholder="Marvel" minlength="2" maxlength="150">
 <label for="pack-service">Download service</label>
 <select id="pack-service"><option>GetComics</option><option>MediaFire</option><option>WeTransfer</option><option>Pixeldrain</option></select>
+<label for="pack-weekday">Check every</label>
+<select id="pack-weekday"><option value="0">Monday</option><option value="1">Tuesday</option><option value="2">Wednesday</option><option value="3">Thursday</option><option value="4">Friday</option><option value="5">Saturday</option><option value="6" selected>Sunday</option></select>
 <label for="pack-sub-mode">When a new pack is found</label>
 <select id="pack-sub-mode"><option value="download">Download for inbox review</option><option value="review">List for manual download</option></select>
 <div class="inbox-actions"><button id="pack-subscribe" type="button">Subscribe Using These Settings</button><button id="pack-check" type="button">Check Subscriptions Now</button></div>

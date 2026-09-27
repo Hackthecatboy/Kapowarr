@@ -197,8 +197,17 @@ Older packs are never downloaded in bulk just because they appear in search.
    such as `Marvel`, and choose one supported service.
 3. Set the writable inbox **root** in the download form—not a prior job's `ready`
    subfolder. Choose automatic download for review, or list for manual download.
-4. Click **Subscribe Using These Settings**. Checks run hourly at minute 15;
-   **Check Subscriptions Now** queues an immediate background check.
+4. Choose **Check every** (Monday through Sunday), then click **Subscribe Using
+   These Settings**. Checks run once on that weekday, using the server/container
+   timezone. Existing subscriptions default to Sunday; change their weekday with
+   **Save Day**. **Check Subscriptions Now** checks enabled subscriptions immediately,
+   regardless of their scheduled weekday.
+
+The scheduler checks whether subscriptions are due hourly at minute 15, but only
+contacts GetComics once on the selected day. The attempt is saved across restarts,
+including failed checks; use the manual check button to retry sooner. If the server
+is offline throughout that day, the next automatic attempt is the following week.
+Manual checks do not consume the scheduled weekly check.
 
 Automatic mode considers dated article titles from the subscription's creation
 DATE onward (including releases dated today). It checks at most the first three
