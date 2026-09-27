@@ -410,6 +410,67 @@ class PackInbox(unittest.TestCase):
         self.db.commit()
         self.assertEqual(self.scan()[0]['status'],'importing')
 
+    def interrupted_copy(self):
+        source = self.comic('Alpha Comics 001 (2026).cbz')
+        token = self.scan()[0]['token']
+        with patch('backend.features.pack_inbox._digest', side_effect=OSError('interrupted')):
+            item = pack_inbox.import_selected([token])['items'][0]
+        return source, token, Path(item['destination'])
+
+    def test_recover_removed_copy_and_import(self):
+        source, token, destination = self.interrupted_copy()
+        original = source.read_bytes()
+        destination.unlink()
+        self.db.execute("UPDATE pack_inbox SET status='importing' WHERE token=?", (token,))
+        self.db.commit()
+        result = pack_inbox.recover_interrupted([token])['items'][0]
+        self.assertEqual(result['status'], 'matched')
+        self.assertIsNone(result['destination'])
+        self.assertFalse(destination.parent.exists())
+        self.assertEqual(pack_inbox.import_selected([token])['items'][0]['status'], 'imported')
+        self.assertEqual(source.read_bytes(), original)
+        self.assertEqual(self.db.execute('SELECT count(*) FROM files').fetchone()[0], 1)
+
+    def test_recovery_refuses_remaining_or_symlinked_copy(self):
+        source, token, destination = self.interrupted_copy()
+        with self.assertRaises(InvalidKeyValue):
+            pack_inbox.recover_interrupted([token])
+        self.assertTrue(destination.exists())
+        destination.unlink()
+        destination.symlink_to(self.base / 'missing')
+        with self.assertRaises(InvalidKeyValue):
+            pack_inbox.recover_interrupted([token])
+        self.assertTrue(destination.is_symlink())
+        self.assertEqual(self.scan()[0]['status'], 'held')
+
+    def test_recovery_refuses_changed_source_or_library_binding(self):
+        source, token, destination = self.interrupted_copy()
+        destination.unlink()
+        original = source.stat()
+        os.utime(source, (1000000100, 1000000100))
+        with self.assertRaises(InvalidKeyValue):
+            pack_inbox.recover_interrupted([token])
+        os.utime(source, ns=(original.st_atime_ns, original.st_mtime_ns))
+        self.db.execute('INSERT INTO files(id,filepath,size) VALUES(1,?,1)', (str(destination),))
+        self.db.execute('INSERT INTO issues_files(file_id,issue_id) VALUES(1,1)')
+        self.db.commit()
+        with self.assertRaises(InvalidKeyValue):
+            pack_inbox.recover_interrupted([token])
+        self.assertEqual(self.scan()[0]['status'], 'held')
+
+    def test_recovery_rejects_active_operation_and_wrong_folder(self):
+        source, token, destination = self.interrupted_copy()
+        destination.unlink()
+        with pack_inbox.inbox_operation():
+            with self.assertRaises(InvalidKeyValue):
+                pack_inbox.recover_interrupted([token])
+        other = self.inbox / 'other'
+        other.mkdir()
+        self.settings.sv.pack_inbox_folder = str(other)
+        with self.assertRaises(InvalidKeyValue):
+            pack_inbox.recover_interrupted([token])
+        self.assertTrue(destination.parent.exists())
+
     def test_recent_files_and_stale_preview_tokens(self):
         source=self.comic('Alpha Comics 001 (2026).cbz')
         old=self.scan()[0]['token']
@@ -494,7 +555,7 @@ class PackInbox(unittest.TestCase):
         settings=self.start_patch('frontend.api.Settings')
         settings.return_value.sv.api_key='fixture-key'
         self.start_patch('frontend.api.StartTypeHandlers.diffuse_timer')
-        for method,path in [('GET','/pack-inbox'),('POST','/pack-inbox/scan'),('POST','/pack-inbox/import')]:
+        for method,path in [('GET','/pack-inbox'),('POST','/pack-inbox/scan'),('POST','/pack-inbox/import'),('POST','/pack-inbox/recover')]:
             self.assertEqual(client.open('/api'+path,method=method,json={'folder':str(self.inbox),'items':[]}).status_code,401)
         self.assertEqual(client.post('/api/pack-inbox/scan?api_key=fixture-key',json={'folder':str(self.inbox)}).status_code,200)
 

@@ -76,7 +76,9 @@ Automatic replacement of existing issues remains unimplemented. See
 ### 2. Recurring pack ingestion
 
 - [ ] Add content identity across moved/renamed files and mount aliases.
-- [ ] Add held-copy recovery/review controls before enabling unattended imports.
+- [ ] Extend held-copy recovery to retained or renamed copies before unattended
+  imports. Explicit recovery after removing an unbound interrupted copy is
+  implemented with local regression tests; Synology validation remains pending.
 - [ ] Add scheduled scans and safe unattended ingestion with repeat protection.
 - [ ] Extend recurring rules to indexer/category/size matching and downloader routing.
 - [ ] Design unknown-series creation as a separate opt-in feature.

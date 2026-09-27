@@ -174,6 +174,14 @@ usingApiKey().then(apiKey => {
             file.textContent = item.relative_path.split('/').pop();
             file.title = item.relative_path;
             row.querySelector('.inbox-message').textContent = `${item.status}: ${item.message}`;
+            const recover = row.querySelector('.inbox-recover');
+            if (['held', 'importing'].includes(item.status)) {
+                recover.onclick = () => {
+                    if (confirm('After removing the interrupted library copy, recheck this file for import? This does not delete files or import automatically.')) request('recover', [item.token]);
+                };
+            } else {
+                recover.parentElement.remove();
+            }
             const cleanup = row.querySelector('.inbox-cleanup');
             if (item.can_cleanup) {
                 cleanup.onclick = () => request('cleanup', [item.token]);

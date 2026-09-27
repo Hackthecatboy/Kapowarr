@@ -613,6 +613,48 @@ def _import_one(
         cursor.connection.commit()
 
 
+def recover_interrupted(tokens: object) -> InboxListing:
+    """Release one interrupted journal only after its output has been removed."""
+    if not isinstance(tokens, list) or len(tokens) != 1 or not isinstance(tokens[0], str):
+        raise InvalidKeyValue('items', 'Select one interrupted import')
+    cursor = get_db()
+    if not _LOCK.acquire(blocking=False):
+        raise InvalidKeyValue('items', 'An inbox operation is running; wait before recovering')
+    try:
+        root = valid_root(Settings().sv.pack_inbox_folder)
+        cursor.execute('BEGIN IMMEDIATE')
+        record = PackInboxDB.journal_entry(tokens[0])
+        if record is None or record['root'] != str(root) or record['status'] not in ('held', 'importing'):
+            raise ValueError('This entry is not an interrupted import in the current folder')
+        row = cast(InboxJournalEntry, dict(record))
+        source, before, volume, ids, destination = _prepare_import(root, row)
+        if time() - before.st_mtime < 30:
+            raise ValueError('Source is still settling; wait before recovering')
+        if row['destination'] != str(destination):
+            raise ValueError('Destination changed or copy was renamed; inspect the library before recovery')
+        if any(part.is_symlink() for part in [destination, *destination.parents]):
+            raise ValueError('Symlinked destination requires manual review')
+        if PackInboxDB.imported_file_location(volume['id'], str(destination)) is not None:
+            raise ValueError('Library still tracks this copy; reconcile its library record first')
+        if destination.parent.exists():
+            # Never remove data: rmdir only succeeds for an empty staging folder.
+            if any(destination.parent.iterdir()):
+                raise ValueError(
+                    'Interrupted copy or other files remain in the staging folder; inspect and remove them first')
+            destination.parent.rmdir()
+        PackInboxDB.reset_interrupted(row['token'])
+        cursor.connection.commit()
+    except (ValueError, OSError) as error:
+        cursor.connection.rollback()
+        raise InvalidKeyValue('items', str(error)) from error
+    except Exception:
+        cursor.connection.rollback()
+        raise
+    finally:
+        _LOCK.release()
+    return listing()
+
+
 def import_selected(tokens: object) -> InboxListing:
     """Revalidate, copy and bind up to 100 selected missing-issue matches.
 

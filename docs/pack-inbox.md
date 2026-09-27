@@ -105,7 +105,14 @@ imported by this slice. Individual comic archives are copied intact.
 The database journals copy progress before writing. If a copy or database update
 fails, or the application stops mid-import, the entry stays held/importing. Its
 source and any partial library copy are retained. Inspect the displayed destination;
-there is no automatic retry, rollback, or review-override button for those entries.
+there is no automatic retry or rollback. After inspecting and removing the
+interrupted library copy, click **Recover Interrupted Import** on its row. Recovery
+requires an unchanged, settled source, missing library issues, no tracked copy,
+and an absent or empty original staging folder. It removes only an empty staging
+folder and returns the entry to matched so you can select it for import again.
+It refuses recovery while an inbox operation is running, if files remain, or if
+the copy was renamed or linked in the library. Reconcile those cases in the library
+first; deleting a file alone does not clear its database binding.
 For unmatched files, use **Find / Add Series** to link or add a series and refresh
 the saved review automatically. If you instead correct a filename in a separate
 inbox copy or add a series elsewhere in the library UI, scan again.

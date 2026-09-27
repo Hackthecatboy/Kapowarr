@@ -488,6 +488,15 @@ class PackInboxDB:
     """
 
     @staticmethod
+    def reset_interrupted(token: str) -> None:
+        """Return a validated interrupted copy to manual import selection."""
+        get_db().execute(
+            "UPDATE pack_inbox SET status='matched', destination=NULL, "
+            "message='Recovered after removing interrupted copy; ready to import' "
+            "WHERE token=? AND status IN ('held','importing')", (token,)
+        )
+
+    @staticmethod
     def importing_paths() -> List[Dict[str, str]]:
         """Return paths whose import was started but not finalized."""
         return get_db().execute(

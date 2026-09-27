@@ -429,3 +429,20 @@ test('periodic pack refresh waits for a slow outstanding request', async t => {
     complete({result: []});
     await tick();
 });
+
+test('interrupted recovery requires confirmation and refreshes import selection', async t => {
+    const { el, state } = await page(t, {
+        items: [{ status: 'importing', relative_path: 'A.cbz', token: 'a' }],
+        respond: path => path === '/pack-inbox/recover'
+            ? { folder: '/inbox', items: [{ status: 'matched', relative_path: 'A.cbz', token: 'a' }] }
+            : undefined
+    });
+    el('.inbox-recover').click();
+    assert.equal(state.calls.length, 0);
+    state.confirm = true;
+    el('.inbox-recover').click();
+    await tick();
+    assert.deepEqual(state.calls, [{ path: '/pack-inbox/recover', data: { items: ['a'] } }]);
+    assert.equal(el('.inbox-recover'), null);
+    assert.equal(el('#inbox-results input').value, 'a');
+});
