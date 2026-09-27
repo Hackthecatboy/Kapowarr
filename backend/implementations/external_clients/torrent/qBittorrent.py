@@ -113,6 +113,25 @@ class qBittorrent(BaseExternalClient):
                    == download_id.lower()), None)
         if job is None:
             return None
+        return self._download_info(job)
+
+    def get_category_downloads(self):
+        """List category members for read-only discovery, without adopting them."""
+        jobs = entries(decode_json(self._request(
+            'GET', 'torrents/info', params={'category': Constants.EXTERNAL_DOWNLOAD_TAG})))
+        result = []
+        for job in jobs:
+            ident = str(job.get('hash', '')).lower()
+            if (job.get('category') != Constants.EXTERNAL_DOWNLOAD_TAG
+                    or not re.fullmatch(r'[a-f0-9]{40}', ident)):
+                continue
+            result.append(dict(self._download_info(job), id=ident,
+                               title=str(job.get('name') or ident)))
+        return result
+
+    @staticmethod
+    def _download_info(job):
+        """Normalize one client response for tracked and discovered torrents."""
         phase = job.get('state')
         done = number(job.get('progress')) >= 1 and job.get('amount_left') == 0
         state = DS.DOWNLOADING_STATE

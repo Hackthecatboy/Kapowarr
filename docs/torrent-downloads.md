@@ -42,6 +42,36 @@ remains available. Use a separate database, library and download folder for the 
    and the original remains available for seeding. Restart the fork and confirm
    it reconnects without adding a second torrent or importing another copy.
 
+## Discover torrents added directly in qBittorrent
+
+Assign the **kapowarr** category to a torrent in an enabled qBittorrent client.
+Open **Activity → Queue**: untracked category members appear alongside managed
+jobs with their current status and progress. Discovery refreshes while Activity
+is open, with client reads cached for 15 seconds. Existing tracked hashes are
+excluded per client. Repeated refreshes do not create database queue entries or
+submit anything to qBittorrent.
+
+Completed torrents offer **Review Files**. This rechecks the category and completed
+state, maps the content path and opens a Pack Inbox scan. A single-file torrent
+scans only that file; a collection scans its own folder, up to the inbox's existing
+2,000-file limit. Choose a smaller completed subfolder manually for larger packs.
+Select matches and import in Pack Inbox. Unknown series and ambiguous editions
+remain for review. Nothing is automatically imported.
+
+Discovered torrents have no delete, blocklist or reorder controls. **Remove All**
+affects managed queue entries only. Imported originals stay in qBittorrent for
+seeding. To hide a discovered torrent after review, remove/change its category in
+qBittorrent; Kapowarr will not change it for you. Imported issues remain protected
+by the inbox journal and already-owned checks on subsequent review.
+
+The completed content must be visible beneath Kapowarr's configured download
+folder after remote mapping. Missing paths, symlinks, library overlap and managed
+pack-folder overlap are rejected. Category membership enables discovery and
+explicit review, not ownership-based automatic import or client cleanup.
+
+Local tests cover discovery, repeat suppression, client failures, path boundaries,
+manual single-file review and source preservation. Live NAS validation is pending.
+
 ## Torrent and lifecycle behavior
 
 The fork accepts HTTP(S) torrent downloads and v1 magnets with hexadecimal or

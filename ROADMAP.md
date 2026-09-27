@@ -59,6 +59,9 @@ an uncertain submission or partially completed import.
 - [ ] Confirm the downloaded release matches the intended library issue.
 - [ ] Validate hash-based repeat suppression during automatic searches and
   qBittorrent category-based placement (implemented; locally tested).
+- [x] Discover external qBittorrent category jobs in Activity with explicit
+  completed-file review through Pack Inbox; no automatic import or client changes.
+  Locally tested; NAS validation pending.
 - [ ] Verify library import while the original continues seeding.
 - [ ] Verify restart recovery, mapped paths, ownership checks and queue cleanup.
 - [ ] Verify both Copy and Complete seeding modes.
@@ -205,6 +208,6 @@ Kapowarr architecture. Complete and verify each slice separately.
 5. **Repeatable frontend tests (complete; locally verified):** Pack Inbox DOM
    regression checks now live in `tests/frontend`, with pinned dependencies,
    [setup instructions](tests/frontend/README.md) and a dedicated CI workflow.
-   Five tests cover import selection, history, cleanup confirmation, subscriptions
-   and download choices. Browser appearance and live integrations still need
+   Eight tests cover import selection, history, cleanup confirmation, subscriptions,
+   download choices and review-only category discovery in Activity. Browser appearance and live integrations still need
    separate validation.

@@ -23,6 +23,13 @@ function addQueueEntry(api_key, obj) {
     source.innerText =
 		obj.source_name.charAt(0).toUpperCase() + obj.source_name.slice(1);
     source.href = obj.web_link;
+    if (obj.discovered) {
+        title.removeAttribute('href');
+        source.removeAttribute('href');
+        entry.classList.add('discovered-torrent');
+        entry.querySelectorAll('.move-up-dl,.move-down-dl,.remove-dl,.blocklist-dl').forEach(button => button.hidden = true);
+        entry.querySelector('.review-torrent-dl').onclick = () => reviewTorrent(obj, api_key, entry);
+    }
     source.title = `Page Title:\n${obj.web_title}`;
     if (obj.web_sub_title !== null)
         source.title += `\n\nSub Section:\n${obj.web_sub_title}`;
@@ -54,6 +61,9 @@ function addQueueEntry(api_key, obj) {
 function updateQueueEntry(obj) {
 	const tr = document.querySelector(`#queue > tr[data-id="${obj.id}"]`);
     if (!tr) return;
+    const review = tr.querySelector('.review-torrent-dl');
+    review.classList.toggle('hidden', !obj.discovered);
+    review.disabled = !obj.can_review || tr.dataset.reviewBusy === 'true';
     tr.querySelector('.retry-import-dl').classList.toggle('hidden', !obj.can_retry);
     tr.querySelector('.forget-dl').classList.toggle('hidden', !obj.can_forget);
 	tr.dataset.status = obj.status;
@@ -79,15 +89,30 @@ async function fillQueue(api_key) {
     queueRefreshPending = true;
     try {
         const json = await fetchAPI('/activity/queue', api_key);
-        const ids = new Set(json.result.map(obj => String(obj.id)));
+        let discovered = [];
+        const notice = document.querySelector('#discovery-status');
+        try {
+            const snapshot = await fetchAPI('/activity/queue/discovered', api_key);
+            discovered = snapshot.result.downloads;
+            notice.textContent = snapshot.result.errors.join(' ');
+        } catch (_) {
+            notice.textContent = 'Could not refresh category downloads. The next refresh will retry.';
+        }
+        QEls.tool_bar.remove_all.disabled = !json.result.length;
+        const jobs = [...json.result, ...discovered];
+        const ids = new Set(jobs.map(obj => String(obj.id)));
         for (const entry of [...QEls.queue.children])
             if (!ids.has(entry.dataset.id)) entry.remove();
-        json.result.forEach((obj, index) => {
+        jobs.forEach((obj, index) => {
             addQueueEntry(api_key, obj);
             const entry = document.querySelector(`#queue > tr[data-id="${obj.id}"]`);
             QEls.queue.appendChild(entry);
             entry.querySelector('.move-up-dl').onclick = () => moveEntry(obj.id, index - 1, api_key);
             entry.querySelector('.move-down-dl').onclick = () => moveEntry(obj.id, index + 1, api_key);
+            if (!obj.discovered) {
+                entry.querySelector('.move-up-dl').hidden = index === 0;
+                entry.querySelector('.move-down-dl').hidden = index === json.result.length - 1;
+            }
         });
     } catch (error) {
         console.warn('Queue refresh failed; will retry');
@@ -99,6 +124,27 @@ async function fillQueue(api_key) {
 //
 // Actions
 //
+async function reviewTorrent(obj, api_key, entry) {
+    const button = entry.querySelector('.review-torrent-dl');
+    const error = entry.querySelector('.recovery-error');
+    entry.dataset.reviewBusy = 'true';
+    button.disabled = true;
+    error.textContent = 'Scanning completed files for review…';
+    try {
+        const response = await sendAPI('POST', '/activity/queue/discovered/review', api_key, {}, {
+            client_id: obj.client_id, info_hash: obj.torrent_hash
+        });
+        if (!response.ok) throw response;
+        window.location.assign(`${url_base}/pack-inbox`);
+    } catch (failure) {
+        let message = 'Could not scan this torrent. Check its completion state, mounts and remote mappings.';
+        try { const body = await failure.json(); if (body.error === 'InvalidKeyValue') message = String(body.result.value); } catch (_) {}
+        error.textContent = message;
+        entry.dataset.reviewBusy = 'false';
+        button.disabled = false;
+    }
+}
+
 async function recoverEntry(id, api_key, action, entry) {
     const buttons = entry.querySelectorAll('.recovery-action');
     const error = entry.querySelector('.recovery-error');

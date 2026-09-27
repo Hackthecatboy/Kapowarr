@@ -21,6 +21,7 @@
 	<td class="number-column"></td>
 	<td class="number-column"></td>
 	<td class="option-column">
+        <button type="button" class="review-torrent-dl recovery-action hidden">Review Files</button>
         <button type="button" class="retry-import-dl recovery-action hidden" title="Recheck the existing client job without downloading again">Retry Import</button>
         <button type="button" class="forget-dl recovery-action hidden" title="Keep the download client job and all files">Remove from queue only</button>
         <span class="recovery-error error" role="status"></span>
@@ -52,6 +53,7 @@
             ) }}
         </div>
     </section>
+    <p id="discovery-status" role="status"></p>
     <div class="icon-text-color">
         <table>
             <thead>

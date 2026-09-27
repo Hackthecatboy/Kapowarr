@@ -49,7 +49,7 @@ isort .
 python3 -m unittest discover -s ./tests -p '*.py'
 ```
 
-For Pack Inbox frontend changes, also run the
+For Pack Inbox or Activity queue frontend changes, also run the
 [frontend regression tests](tests/frontend/README.md). These use Node.js 22+
 and mocked API responses; no running Kapowarr instance is required.
 

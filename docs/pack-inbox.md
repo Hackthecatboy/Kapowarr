@@ -4,6 +4,12 @@ Open **Volumes → Pack Inbox** to scan a completed folder, review filename matc
 and copy selected comics into series already in the library. This also works for
 packs downloaded outside Kapowarr. It does not require a tracked downloader job.
 
+Completed external qBittorrent torrents in the **kapowarr** category can also be
+opened here with **Activity → Queue → Review Files**. Single-file torrents scan
+only their selected file, even when other downloads share the same folder.
+These are external sources: importing copies never deletes their originals.
+See [category discovery](torrent-downloads.md#discover-torrents-added-directly-in-qbittorrent).
+
 ## First Synology test
 
 Use the isolated development container and a small completed test folder:

@@ -122,6 +122,17 @@ class TorrentAdapters(unittest.TestCase):
                     total_size=3, dlspeed=1, content_path='/downloads/job/Comic.cbz',
                     save_path='/downloads/job', tags='one,two')
 
+    def test_category_discovery_filters_category_and_invalid_hashes(self):
+        client = self.client(qBittorrent)
+        job = dict(self.qb_info('uploading'), category='kapowarr', name='Collection')
+        jobs = [job, dict(job, category='other'), dict(job, hash='invalid')]
+        with patch.object(client, '_request', return_value=(200, {}, __import__('json').dumps(jobs).encode())) as request:
+            result = client.get_category_downloads()
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['id'], HASH)
+        self.assertEqual(result[0]['state'], DS.SEEDING_STATE)
+        self.assertEqual(request.call_args.kwargs['params'], {'category': 'kapowarr'})
+
     def test_qbittorrent_only_explicit_completed_states_are_importable(self):
         client = self.client(qBittorrent)
         for phase in ('metaDL', 'checkingUP', 'checkingDL', 'checkingResumeData', 'moving', 'unknown', 'stalledDL'):

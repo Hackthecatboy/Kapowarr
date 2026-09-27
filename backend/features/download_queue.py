@@ -255,7 +255,7 @@ class DownloadHandler(metaclass=Singleton):
                 candidates = self.queue + unique
                 if any(
                     isinstance(existing, TorrentDownload)
-                    and self._torrent_identity(existing) == download.payload.info_hash
+                    and self.torrent_identity(existing) == download.payload.info_hash
                     for existing in candidates
                 ):
                     LOGGER.info('Torrent already tracked; skipping repeat queue entry')
@@ -564,7 +564,7 @@ class DownloadHandler(metaclass=Singleton):
 
     # region Queue Management
     @staticmethod
-    def _torrent_identity(download: TorrentDownload) -> Union[str, None]:
+    def torrent_identity(download: TorrentDownload) -> Union[str, None]:
         """Read known identity without contacting or claiming the client job."""
         if download.external_id:
             return download.external_id.lower()

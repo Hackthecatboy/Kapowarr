@@ -264,7 +264,7 @@ def listing() -> InboxListing:
     return dict(folder=folder, items=rows)
 
 
-def scan(folder: object) -> InboxListing:
+def scan(folder: object, *, filename: Optional[str] = None) -> InboxListing:
     """Save and scan a completed folder without importing its files.
 
     Raises:
@@ -288,7 +288,12 @@ def scan(folder: object) -> InboxListing:
         def failed(error: OSError) -> None:
             raise InvalidKeyValue(
                 'folder', 'Cannot read part of the inbox; check permissions')
-        for directory, dirs, files in os.walk(root, followlinks=False, onerror=failed):
+        # Client discovery can target a single-file torrent without scanning
+        # unrelated downloads that share its category folder.
+        if filename is not None:
+            paths.append(safe_source(root, filename))
+        for directory, dirs, files in ([] if filename is not None else os.walk(
+                root, followlinks=False, onerror=failed)):
             for name in list(dirs):
                 if Path(directory) / name in unfinished:
                     dirs.remove(name)

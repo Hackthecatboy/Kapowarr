@@ -85,3 +85,10 @@ th, td {
 .recovery-error {
     display: block;
 }
+
+#discovery-status:not(:empty) {
+    position: relative;
+    z-index: 1;
+    padding: .5rem 1rem;
+    color: var(--text-color);
+}

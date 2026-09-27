@@ -22,7 +22,7 @@ from backend.base.definitions import (BlocklistReason, BlocklistReasonID,
 from backend.base.files import folder_path
 from backend.base.helpers import hash_credential
 from backend.base.logging import LOGGER, get_log_file_contents, get_recent_logs
-from backend.features import pack_downloads, pack_subscriptions
+from backend.features import pack_downloads, pack_subscriptions, torrent_discovery
 from backend.features.duplicates import scan as scan_duplicates, delete_selected as delete_duplicates
 from backend.features.download_queue import (DownloadHandler,
                                              delete_download_history,
@@ -1442,6 +1442,23 @@ def api_issue_download(id: int):
         force_match=data["force_match"]
     )
     return return_api(result, code=201)
+
+
+@api.route('/activity/queue/discovered', methods=['GET'])
+@error_handler
+@auth
+def api_discovered_torrents():
+    return return_api(torrent_discovery.listing(DownloadHandler()))
+
+
+@api.route('/activity/queue/discovered/review', methods=['POST'])
+@error_handler
+@auth
+def api_review_discovered_torrent():
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        raise InvalidKeyValue('torrent', 'Choose a discovered torrent')
+    return return_api(torrent_discovery.review(data.get('client_id'), data.get('info_hash')))
 
 
 @api.route('/activity/queue', methods=['GET', 'DELETE'])

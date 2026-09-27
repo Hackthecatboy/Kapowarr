@@ -65,6 +65,17 @@ class PackInbox(unittest.TestCase):
     def scan(self):
         return pack_inbox.scan(str(self.inbox))['items']
 
+    def test_single_file_scan_excludes_neighbors_and_retains_original(self):
+        source = self.comic('Alpha Comics 001 (2026).cbz')
+        other = self.comic('Beta Comics 001 (2026).cbz')
+        rows = pack_inbox.scan(str(self.inbox), filename=source.name)['items']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['relative_path'], source.name)
+        result = pack_inbox.import_selected([rows[0]['token']])
+        self.assertEqual(result['items'][0]['status'], 'imported')
+        self.assertTrue(source.exists())
+        self.assertTrue(other.exists())
+
     def test_rename_setting_updates_journal_but_preserves_source(self):
         source=self.comic('Alpha Comics 001 (2026).cbz')
         original=source.read_bytes()
