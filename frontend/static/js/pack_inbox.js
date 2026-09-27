@@ -91,7 +91,7 @@ usingApiKey().then(apiKey => {
         if (picker !== selection) return;
         render(result);
         seriesDialog.close();
-        status.textContent = 'Series linked to this file. Select it when ready to import.';
+        status.textContent = 'Series linked. Inbox matches updated; select files when ready to import.';
     }
     window.addEventListener('message', async event => {
         if (!picker || matching || event.origin !== window.location.origin || event.source !== seriesFrame.contentWindow

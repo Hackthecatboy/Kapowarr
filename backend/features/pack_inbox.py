@@ -177,6 +177,7 @@ def set_match(token: object, volume_id: object, issue_ids: object) -> InboxListi
             raise InvalidKeyValue('match', reason)
         PackInboxDB.set_manual_match(token, volume_id, json.dumps(ids), f"Selected: {volume['title']} — {len(ids)} issue(s)")
         get_db().connection.commit()
+        _refresh_review_matches()
         return listing()
 
 
@@ -318,6 +319,40 @@ def cleanup_selected(tokens: object) -> InboxListing:
         for row in rows:
             _cleanup_imported(row)
         return listing()
+
+
+def _refresh_review_matches() -> None:
+    """Recheck saved unresolved files after a selection, within inbox_operation.
+
+    Do not expand a single-file torrent review to neighboring downloads, or
+    replace explicit choices and import/hold states. Imports still revalidate.
+    """
+    root = valid_root(Settings().sv.pack_inbox_folder)
+    for item in PackInboxDB.review_rows(str(root)):
+        if item['status'] != 'review':
+            continue
+        row = PackInboxDB.review_selection(item['token'], str(root))
+        if row is None or row['manual_match']:
+            continue
+        try:
+            source = safe_source(root, row['relative_path'])
+            stat = source.stat()
+            if (source.suffix.lower() not in COMICS or not stat.st_size
+                    or time() - stat.st_mtime < 30
+                    or stat.st_size != row['size']
+                    or str(stat.st_mtime_ns) != row['mtime']):
+                continue
+            volume, ids, reason = classify(source.name)
+            if volume is None:
+                continue
+            message = reason or f"{volume['title']} ({volume['year']}) — {len(ids)} issue(s)"
+            PackInboxDB.save_scan(
+                str(root), row['relative_path'], row['token'],
+                'owned' if reason else 'matched', message, row['size'],
+                row['mtime'], volume['id'], json.dumps(ids))
+        except (ValueError, OSError):
+            continue
+    get_db().connection.commit()
 
 
 def listing() -> InboxListing:

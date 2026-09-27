@@ -5,6 +5,7 @@ from datetime import datetime
 from io import BytesIO
 from os import remove
 from os.path import basename, splitext
+from sqlite3 import OperationalError
 from typing import Any, Dict, List, Tuple, Union
 
 from flask import Blueprint, after_this_request, request, send_file
@@ -1170,16 +1171,22 @@ def api_volumes():
             except ValueError:
                 raise InvalidKeyValue('special_version', special_version)
 
-        volume_id = Library.add(
-            comicvine_id,
-            root_folder_id,
-            monitor,
-            monitoring_scheme,
-            monitor_new_issues,
-            volume_folder,
-            sv,
-            auto_search
-        )
+        try:
+            volume_id = Library.add(
+                comicvine_id,
+                root_folder_id,
+                monitor,
+                monitoring_scheme,
+                monitor_new_issues,
+                volume_folder,
+                sv,
+                auto_search
+            )
+        except OperationalError as error:
+            if 'database is locked' not in str(error).lower():
+                raise
+            LOGGER.warning('Volume add could not finish: database is locked')
+            return return_api({}, 'DatabaseBusy', 503)
         volume_info = Library.get_volume(volume_id).get_public_data()
         return return_api(volume_info, code=201)
 

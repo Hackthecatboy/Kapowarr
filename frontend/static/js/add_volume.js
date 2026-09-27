@@ -454,31 +454,35 @@ function addVolume() {
 		'monitoring_scheme': data.monitoring_scheme
 	});
 
-	usingApiKey()
-	.then(api_key => {
-		sendAPI('POST', '/volumes', api_key, {}, data)
-		.then(response => response.json())
-		.then(json => {
-			const entry = document.querySelector(
-				`button[data-comicvine_id="${data.comicvine_id}"]`
-			);
-			addAlreadyAdded(entry, json.result.id);
-			closeWindow();
-            selectPickerSeries(json.result.id);
-		})
-		.catch(e => {
-			if (e.status === 509) {
-				SearchEls.window.submit.innerText = 'Metadata source API rate limit reached';
-				SearchEls.window.submit.style.color = 'var(--error-color)';
-				showWindow("add-window");
-			} else if (e.status === 400) {
-				SearchEls.window.submit.innerText = 'The API key of the metadata source is invalid';
-				SearchEls.window.submit.style.color = 'var(--error-color)';
-				showWindow("add-window");
-			} else
-				console.log(e);
-		});
-	});
+    return usingApiKey()
+    .then(api_key => sendAPI('POST', '/volumes', api_key, {}, data))
+    .then(response => response.json())
+    .then(json => {
+        const entry = document.querySelector(
+            `button[data-comicvine_id="${data.comicvine_id}"]`
+        );
+        if (entry) addAlreadyAdded(entry, json.result.id);
+        closeWindow();
+        selectPickerSeries(json.result.id);
+    })
+    .catch(async error => {
+        let message = 'Could not finish adding the volume. Check the library before retrying, then check System → Logs.';
+        let detail;
+        try { detail = await error.json(); } catch (_) {}
+        if (detail?.error === 'DatabaseBusy') {
+            message = 'The database is busy. Let other library operations finish, then check the library before retrying.';
+        } else if (error.status === 509) {
+            message = 'Metadata source API rate limit reached';
+        } else if (error.status === 400) {
+            message = 'The API key of the metadata source is invalid';
+        } else if (error.status) {
+            message += ` HTTP ${error.status}.`;
+        }
+        console.error(error);
+        SearchEls.window.submit.innerText = message;
+        SearchEls.window.submit.style.color = 'var(--error-color)';
+        showWindow('add-window');
+    });
 };
 
 // code run on load

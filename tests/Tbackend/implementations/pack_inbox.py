@@ -214,6 +214,23 @@ class PackInbox(unittest.TestCase):
         pack_inbox.set_match(row['token'], 3, [3])
         self.assertEqual(self.scan()[0]['status'], 'matched')
 
+    def test_selecting_series_refreshes_only_unchanged_saved_review_files(self):
+        self.comic('New Series 001 (2026).cbz')
+        changed = self.comic('New Series 1 (2026).cbz')
+        self.comic('Alternate 001 (2026).cbz')
+        rows = {r['relative_path']: r for r in self.scan()}
+        self.volume(3, 'New Series')
+        self.comic('New Series 01 (2026).cbz')  # Not part of this review.
+        changed.write_bytes(b'changed')
+        result = pack_inbox.set_match(rows['Alternate 001 (2026).cbz']['token'], 3, [3])
+        updated = {r['relative_path']: r for r in result['items']}
+        self.assertEqual(len(updated), 3)
+        self.assertEqual(updated['New Series 001 (2026).cbz']['status'], 'matched')
+        self.assertEqual(updated['New Series 1 (2026).cbz']['status'], 'review')
+        self.assertEqual(updated['Alternate 001 (2026).cbz']['status'], 'matched')
+        self.assertEqual(updated['New Series 001 (2026).cbz']['token'],
+                         rows['New Series 001 (2026).cbz']['token'])
+
     def test_symlinks_and_overlapping_folders_are_rejected(self):
         self.comic('Alpha Comics 001 (2026).cbz')
         (self.inbox/'link.cbz').symlink_to(self.library/'outside.cbz')
@@ -347,6 +364,20 @@ class PackInbox(unittest.TestCase):
         for method,path in [('GET','/pack-inbox'),('POST','/pack-inbox/scan'),('POST','/pack-inbox/import')]:
             self.assertEqual(client.open('/api'+path,method=method,json={'folder':str(self.inbox),'items':[]}).status_code,401)
         self.assertEqual(client.post('/api/pack-inbox/scan?api_key=fixture-key',json={'folder':str(self.inbox)}).status_code,200)
+
+    def test_volume_add_reports_database_contention(self):
+        app = Flask(__name__)
+        app.register_blueprint(api, url_prefix='/api')
+        settings = self.start_patch('frontend.api.Settings')
+        settings.return_value.sv.api_key = 'fixture-key'
+        self.start_patch('frontend.api.StartTypeHandlers.diffuse_timer')
+        add = self.start_patch('frontend.api.Library.add',
+                              side_effect=sqlite3.OperationalError('database is locked'))
+        response = app.test_client().post('/api/volumes?api_key=fixture-key',
+                                         json={'comicvine_id': 90125, 'root_folder_id': 1})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json['error'], 'DatabaseBusy')
+        self.assertEqual(add.call_count, 1)
 
     def test_migration_is_repeatable(self):
         self.db.execute('DROP TABLE pack_inbox')

@@ -64,6 +64,9 @@ an uncertain submission or partially completed import.
   Locally tested; NAS validation pending.
 - [ ] Investigate intermittent first-click Review Files failures/stale initial
   results reported on Synology; a subsequent click succeeds. Server logs needed.
+- [ ] Investigate database write contention during volume adds on Synology
+  (Thunderbolts: two `database is locked` failures). Adds now display a busy
+  error and restore the dialog; the competing writer is not yet identified.
 - [ ] Verify library import while the original continues seeding.
 - [ ] Verify restart recovery, mapped paths, ownership checks and queue cleanup.
 - [ ] Verify both Copy and Complete seeding modes.
@@ -211,6 +214,6 @@ Kapowarr architecture. Complete and verify each slice separately.
 5. **Repeatable frontend tests (complete; locally verified):** Pack Inbox DOM
    regression checks now live in `tests/frontend`, with pinned dependencies,
    [setup instructions](tests/frontend/README.md) and a dedicated CI workflow.
-   Thirteen tests cover sequential batch imports, interrupted requests, import selection, history, cleanup confirmation, subscriptions,
+   Fourteen tests cover sequential batch imports, interrupted requests, import selection, history, cleanup confirmation, subscriptions,
    download choices, per-file series selection and review-only category discovery. Browser appearance and live integrations still need
    separate validation.
