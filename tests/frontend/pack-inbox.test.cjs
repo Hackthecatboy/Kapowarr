@@ -283,3 +283,66 @@ test('picker records an owned issue and hides it from needs attention', async t 
     assert.match(el('#inbox-status').textContent, /excluded from import/);
     assert.equal(state.calls.some(call => call.path.endsWith('/import')), false);
 });
+
+const subscription = id => ({id, enabled: true, weekday: 0, query: 'weekly',
+    link_filter: 'Marvel', service: 'GetComics', automatic: true, message: ''});
+
+test('a pending subscription poll preserves weekday edits made after it started', async t => {
+    const {w, el, state} = await page(t, {subscriptions: [subscription(1)]});
+    Object.defineProperty(w.document, 'hidden', {value: false});
+    let finish;
+    w.fetchAPI = async path => {
+        assert.equal(path, '/pack-subscriptions');
+        return new Promise(resolve => {finish = resolve;});
+    };
+    state.timers.find(timer => timer.delay === 10000).fn();
+    const day = el('.pack-sub-day select');
+    day.value = '3'; day.onchange();
+    finish({result: state});
+    await tick();
+    assert.equal(el('.pack-sub-day select').value, '3');
+    assert.equal(el('.pack-sub-day select').dataset.dirty, 'true');
+});
+
+test('saving one subscription preserves another draft and rejects an older poll', async t => {
+    const {w, el, state} = await page(t, {
+        subscriptions: [subscription(1), subscription(2)],
+        respond: (path, data) => {
+            assert.equal(path, '/pack-subscriptions/schedule');
+            state.subscriptions[0].weekday = data.weekday;
+            return {};
+        }
+    });
+    Object.defineProperty(w.document, 'hidden', {value: false});
+    let finishOld;
+    const originalFetch = w.fetchAPI;
+    w.fetchAPI = () => new Promise(resolve => {finishOld = resolve;});
+    state.timers.find(timer => timer.delay === 10000).fn();
+    w.fetchAPI = originalFetch;
+    const days = w.document.querySelectorAll('.pack-sub-day select');
+    days[0].value = '3'; days[0].onchange();
+    days[1].value = '5'; days[1].onchange();
+    await el('.pack-sub-save').onclick();
+    finishOld({result: {...state, subscriptions: [subscription(1), subscription(2)]}});
+    await tick();
+    const updated = w.document.querySelectorAll('.pack-sub-day select');
+    assert.equal(updated[0].value, '3');
+    assert.equal(updated[0].dataset.dirty, undefined);
+    assert.equal(updated[1].value, '5');
+    assert.equal(updated[1].dataset.dirty, 'true');
+});
+
+test('failed weekday save keeps its draft and restores controls for retry', async t => {
+    const {el} = await page(t, {
+        subscriptions: [subscription(1)],
+        respond: () => {throw Error('Server unavailable');}
+    });
+    const day = el('.pack-sub-day select');
+    day.value = '4'; day.onchange();
+    await el('.pack-sub-save').onclick();
+    assert.equal(el('.pack-sub-day select').value, '4');
+    assert.equal(el('.pack-sub-day select').dataset.dirty, 'true');
+    assert.equal(el('.pack-sub-save').disabled, false);
+    assert.equal(el('.pack-sub-day select').disabled, false);
+    assert.match(el('#pack-discovery-status').textContent, /selection is retained/);
+});

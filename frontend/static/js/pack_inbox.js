@@ -363,29 +363,61 @@ usingApiKey().then(apiKey => {
         } catch (error) { discoveryStatus.textContent = 'Search failed; check System Logs.'; }
         finally { discoveryBusy = false; }
     }
-    async function refreshSubscriptions() {
+    const subscriptionDrafts = new Map();
+    const subscriptionWrites = new Set();
+    let subscriptionRefreshVersion = 0;
+    async function refreshSubscriptions(polling = false) {
+        const version = ++subscriptionRefreshVersion;
         try {
             const data = (await fetchAPI('/pack-subscriptions', apiKey)).result;
-            const rows = PackEls.discovery.subscriptions; rows.replaceChildren();
+            const rows = PackEls.discovery.subscriptions;
+            if (version !== subscriptionRefreshVersion || subscriptionWrites.size
+                || (polling && rows.contains(document.activeElement))) return;
+            rows.replaceChildren();
             for (const sub of data.subscriptions) {
                 const row = clonePackRow(PackEls.templates.subscription);
                 const toggle = row.querySelector('.pack-sub-toggle');
                 toggle.textContent = sub.enabled ? 'Pause' : 'Resume';
                 toggle.onclick = async () => {
-                    try { await discoveryPost('toggle', {id: sub.id, enabled: !sub.enabled}); await refreshSubscriptions(); }
+                    if (subscriptionWrites.has(sub.id)) return;
+                    subscriptionWrites.add(sub.id);
+                    subscriptionRefreshVersion++;
+                    toggle.disabled = true;
+                    try { await discoveryPost('toggle', {id: sub.id, enabled: !sub.enabled}); }
                     catch (error) { discoveryStatus.textContent = 'Could not change subscription.'; }
+                    finally { subscriptionWrites.delete(sub.id); toggle.disabled = false; }
+                    await refreshSubscriptions();
                 };
                 row.querySelector('.pack-sub-description').textContent = `${sub.query} / ${sub.link_filter} / ${sub.service} — ${sub.automatic ? 'Automatic download' : 'Review only'} — ${sub.message}. Last check: ${sub.last_checked || 'Not checked yet'} `;
                 const day = PackEls.discovery.weekday.cloneNode(true);
-                day.removeAttribute('id'); day.value = String(sub.weekday);
-                day.onchange = () => { day.dataset.dirty = 'true'; };
+                day.removeAttribute('id');
+                day.value = subscriptionDrafts.get(sub.id) ?? String(sub.weekday);
+                if (subscriptionDrafts.has(sub.id)) day.dataset.dirty = 'true';
+                day.onchange = () => {
+                    subscriptionDrafts.set(sub.id, day.value);
+                    day.dataset.dirty = 'true';
+                };
                 day.setAttribute('aria-label', 'Check weekday for ' + sub.query);
                 const save = row.querySelector('.pack-sub-save');
                 save.onclick = async () => {
-                    save.disabled = true;
-                    try { await discoveryPost('schedule', {id: sub.id, weekday: Number(day.value)}); await refreshSubscriptions(); }
-                    catch (_) { discoveryStatus.textContent = 'Could not save weekday.'; }
-                    finally { save.disabled = false; }
+                    if (subscriptionWrites.has(sub.id)) return;
+                    const value = day.value;
+                    subscriptionDrafts.set(sub.id, value);
+                    subscriptionWrites.add(sub.id);
+                    subscriptionRefreshVersion++;
+                    save.disabled = day.disabled = toggle.disabled = true;
+                    try {
+                        await discoveryPost('schedule', {id: sub.id, weekday: Number(value)});
+                        subscriptionDrafts.delete(sub.id);
+                        delete day.dataset.dirty;
+                    } catch (_) {
+                        day.dataset.dirty = 'true';
+                        discoveryStatus.textContent = 'Could not save weekday. Your selection is retained; try again.';
+                    } finally {
+                        subscriptionWrites.delete(sub.id);
+                        save.disabled = day.disabled = toggle.disabled = false;
+                    }
+                    await refreshSubscriptions();
                 };
                 row.querySelector('.pack-sub-day').append(day);
                 rows.append(row);
@@ -400,7 +432,7 @@ usingApiKey().then(apiKey => {
             PackEls.discovery.release_count.textContent = `(${groups.size})`;
             [...groups.entries()].sort((a, b) => b[1].title.localeCompare(a[1].title, undefined, {numeric: true}))
                 .forEach(([article, group]) => releases.append(articleRow(group.title, article, [...group.states].join('; '))));
-        } catch (_) { discoveryStatus.textContent = 'Could not load subscriptions.'; }
+        } catch (_) { if (version === subscriptionRefreshVersion) discoveryStatus.textContent = 'Could not load subscriptions.'; }
     }
     PackEls.discovery.form.onsubmit = event => { event.preventDefault(); searchPacks(true); };
     PackEls.discovery.older.onclick = () => searchPacks(false);
@@ -424,7 +456,7 @@ usingApiKey().then(apiKey => {
     refreshSubscriptions();
     setInterval(() => {
         const subscriptions = PackEls.discovery.subscriptions;
-        if (!document.hidden && !subscriptions.contains(document.activeElement) && !subscriptions.querySelector('[data-dirty]')) refreshSubscriptions();
+        if (!document.hidden && !subscriptions.contains(document.activeElement) && !subscriptions.querySelector('[data-dirty]')) refreshSubscriptions(true);
     }, 10000);
     PackEls.download.refresh.onclick = refreshJobs;
     refreshJobs();

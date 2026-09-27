@@ -218,7 +218,7 @@ Kapowarr architecture. Complete and verify each slice separately.
 5. **Repeatable frontend tests (complete; locally verified):** Pack Inbox DOM
    regression checks now live in `tests/frontend`, with pinned dependencies,
    [setup instructions](tests/frontend/README.md) and a dedicated CI workflow.
-   Sixteen tests cover sequential batch imports, interrupted requests, import selection, history, cleanup confirmation, subscriptions,
+   Nineteen tests cover sequential batch imports, interrupted requests, import selection, history, cleanup confirmation, subscriptions,
    download choices, per-file series selection and review-only category discovery. Browser appearance and live integrations still need
    separate validation.
 
@@ -237,8 +237,12 @@ Kapowarr architecture. Complete and verify each slice separately.
    cache; public settings use the same path. Tests cover concurrent commits,
    rollback, delayed old reads and unchanged-read reuse. Existing transaction
    boundaries are preserved. NAS validation remains pending.
-3. **Subscription edits (pending):** preserve unsaved weekday changes when an
-   already-running polling request returns.
+3. **Subscription edits (implemented; locally tested):** weekday drafts survive
+   polling responses and refreshes after another subscription is saved. Older
+   responses cannot replace newer state; active writes and focused polling
+   controls are protected. Failed saves retain the selected day for retry.
+   Regression tests cover delayed responses, other drafts and failed saves.
+   Browser/NAS validation remains pending.
 4. **Pack download polling (pending):** prevent older refresh responses from
    replacing newer statuses or restoring obsolete action buttons.
 
