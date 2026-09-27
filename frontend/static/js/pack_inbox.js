@@ -245,15 +245,22 @@ usingApiKey().then(apiKey => {
     const choices = PackEls.download.choices;
     const jobs = PackEls.download.jobs;
     let downloadingRequest = false;
-    async function packError(error) {
+    async function packError(error, isCurrent = () => true) {
         let message = 'Pack operation failed. Check System → Logs.';
         try { const body = await error.json(); if (body.error === 'InvalidKeyValue') message = String(body.result.value); } catch (_) {}
-        packStatus.textContent = message;
+        if (isCurrent()) packStatus.textContent = message;
     }
     const jobOpen = new Map();
-    async function refreshJobs() {
+    const finishingJobs = new Set();
+    let jobRefreshVersion = 0;
+    let pendingJobRefreshes = 0;
+    async function refreshJobs(polling = false) {
+        if (finishingJobs.size || (polling === true && pendingJobRefreshes)) return;
+        const version = ++jobRefreshVersion;
+        pendingJobRefreshes++;
         try {
             const data = await fetchAPI('/pack-downloads', apiKey);
+            if (version !== jobRefreshVersion) return;
             jobs.replaceChildren();
             const finishedJobs = PackEls.download.finished; finishedJobs.replaceChildren();
             PackEls.download.finished_count.textContent = `(${data.result.filter(job => job.status === 'finished').length})`;
@@ -277,24 +284,31 @@ usingApiKey().then(apiKey => {
                 }
                 if (job.status === 'ready' || job.status === 'held') {
                     finish.onclick = async () => {
-                        finish.disabled = true;
+                        if (finishingJobs.has(job.id)) return;
+                        finishingJobs.add(job.id);
+                        jobRefreshVersion++;
+                        finish.disabled = review.disabled = true;
                         try {
                             const preview = (await (await sendAPI('POST', '/pack-downloads/finish-preview', apiKey, {}, {id: job.id})).json()).result;
                             const paths = preview.files.map(file => file.path).join('\n');
                             if (!confirm(`Permanently delete the retained archive and ALL remaining files in this pack? This includes unselected and unmatched comics. Library copies will stay.\n\n${preview.files.length} files, ${(preview.bytes / 1024 / 1024).toFixed(1)} MiB\n${paths}`)) return;
                             await sendAPI('POST', '/pack-downloads/finish', apiKey, {}, {token: preview.token, confirm: true});
                             packStatus.textContent = 'Pack finished. Archive and remaining sources deleted; library copies preserved.';
-                            await refreshJobs();
                             request('refresh');
                         } catch (error) { await packError(error); }
-                        finally { finish.disabled = false; }
+                        finally {
+                            finishingJobs.delete(job.id);
+                            finish.disabled = review.disabled = false;
+                            await refreshJobs();
+                        }
                     };
                 } else {
                     finish.remove();
                 }
                 (job.status === 'finished' ? finishedJobs : jobs).append(row);
             }
-        } catch (error) { await packError(error); }
+        } catch (error) { await packError(error, () => version === jobRefreshVersion); }
+        finally { pendingJobRefreshes--; }
     }
     packForm.onsubmit = async event => {
         event.preventDefault();
@@ -460,6 +474,6 @@ usingApiKey().then(apiKey => {
     }, 10000);
     PackEls.download.refresh.onclick = refreshJobs;
     refreshJobs();
-    setInterval(() => { if (!document.hidden) refreshJobs(); }, 5000);
+    setInterval(() => { if (!document.hidden) refreshJobs(true); }, 5000);
     request('refresh');
 });

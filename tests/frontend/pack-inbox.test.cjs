@@ -346,3 +346,86 @@ test('failed weekday save keeps its draft and restores controls for retry', asyn
     assert.equal(el('.pack-sub-day select').disabled, false);
     assert.match(el('#pack-discovery-status').textContent, /selection is retained/);
 });
+
+test('older pack responses cannot restore ready actions after a finished response', async t => {
+    const {w, el} = await page(t, {jobs: [job('one', 'ready')]});
+    const responses = [];
+    w.fetchAPI = async path => {
+        assert.equal(path, '/pack-downloads');
+        return new Promise(resolve => responses.push(resolve));
+    };
+    const older = el('#pack-jobs-refresh').onclick();
+    const newer = el('#pack-jobs-refresh').onclick();
+    responses[1]({result: [job('one', 'finished')]});
+    await newer;
+    responses[0]({result: [job('one', 'ready')]});
+    await older;
+    assert.equal(el('#pack-download-jobs').children.length, 0);
+    assert.equal(el('#pack-finished-jobs').children.length, 1);
+    assert.equal(el('#pack-finished-jobs .pack-finish'), null);
+    assert.equal(el('#pack-finished-jobs .pack-review'), null);
+});
+
+test('cleanup invalidates pending polls and keeps actions disabled until completion', async t => {
+    let finishCleanup;
+    const {w, el, state} = await page(t, {
+        confirm: true, jobs: [job('one', 'ready')],
+        respond: path => {
+            if (path === '/pack-downloads/finish-preview') return {token: 'preview', files: [], bytes: 0};
+            if (path === '/pack-downloads/finish') return new Promise(resolve => {finishCleanup = resolve;});
+        }
+    });
+    const originalFetch = w.fetchAPI;
+    let finishPoll;
+    w.fetchAPI = () => new Promise(resolve => {finishPoll = resolve;});
+    const pendingPoll = el('#pack-jobs-refresh').onclick();
+    w.fetchAPI = originalFetch;
+    const finishButton = el('.pack-finish');
+    const cleanup = finishButton.onclick();
+    await tick();
+    finishPoll({result: [job('one', 'ready')]});
+    await pendingPoll;
+    await el('#pack-jobs-refresh').onclick();
+    assert.equal(el('.pack-finish'), finishButton);
+    assert.equal(finishButton.disabled, true);
+    assert.equal(el('.pack-review').disabled, true);
+    state.jobs = [job('one', 'finished')];
+    finishCleanup({});
+    await cleanup;
+    assert.equal(el('#pack-download-jobs').children.length, 0);
+    assert.equal(el('#pack-finished-jobs').children.length, 1);
+});
+
+test('an older polling error cannot overwrite newer pack status', async t => {
+    const {w, el} = await page(t);
+    let rejectOld;
+    w.fetchAPI = () => new Promise((resolve, reject) => {rejectOld = reject;});
+    const older = el('#pack-jobs-refresh').onclick();
+    w.fetchAPI = async () => ({result: []});
+    await el('#pack-jobs-refresh').onclick();
+    el('#pack-download-status').textContent = 'Newer result';
+    rejectOld({json: async () => ({error: 'InvalidKeyValue', result: {value: 'Old failure'}})});
+    await older;
+    assert.equal(el('#pack-download-status').textContent, 'Newer result');
+});
+
+test('periodic pack refresh waits for a slow outstanding request', async t => {
+    const {w, el, state} = await page(t);
+    Object.defineProperty(w.document, 'hidden', {value: false});
+    let complete, requests = 0;
+    w.fetchAPI = () => {
+        requests++;
+        return new Promise(resolve => {complete = resolve;});
+    };
+    const pending = el('#pack-jobs-refresh').onclick();
+    const poll = state.timers.find(timer => timer.delay === 5000);
+    poll.fn(); poll.fn();
+    assert.equal(requests, 1);
+    complete({result: [job('slow', 'ready')]});
+    await pending;
+    assert.match(el('#pack-download-jobs summary').textContent, /slow/);
+    poll.fn();
+    assert.equal(requests, 2);
+    complete({result: []});
+    await tick();
+});
