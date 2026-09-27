@@ -57,6 +57,13 @@
 				<img src="{{ url_for('static', filename='img/favicon.svg') }}" alt="">
 			</a>
 		</div>
+        <label class="header-theme">Theme
+            <select id="header-theme-input" aria-label="Color theme">
+                <option value="light">Light</option>
+                <option value="dark">Dark gray</option>
+                <option value="black">Black</option>
+            </select>
+        </label>
 		{% block right_side_header %}
 		{% endblock %}
 	</header>

@@ -120,6 +120,45 @@ class LibraryEntry {
 	};
 };
 
+function libraryLetter(title) {
+    const first = title.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').charAt(0).toUpperCase();
+    return /^[A-Z]$/.test(first) ? first : '#';
+}
+
+function updateLibraryAlphabet(volumes) {
+    const rail = document.querySelector('#library-alphabet');
+    rail.replaceChildren();
+    const enabled = library_els.view_options.sort.value === 'title' && volumes.length > 0;
+    rail.hidden = !enabled;
+    library_els.pages.view.classList.toggle('has-alphabet', enabled);
+    if (!enabled) return;
+    const first = new Map();
+    for (const volume of volumes) {
+        const letter = libraryLetter(volume.title);
+        if (!first.has(letter)) first.set(letter, volume.id);
+    }
+    for (const letter of '#ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = letter;
+        button.disabled = !first.has(letter);
+        button.setAttribute('aria-label', letter === '#' ? 'Jump to numbers and symbols' : `Jump to ${letter}`);
+        button.onclick = () => {
+            const table = library_els.mass_edit.toggle.hasAttribute('checked') || library_els.view_options.view.value === 'table';
+            const view = table ? library_els.views.table : library_els.views.list;
+            const entry = view.querySelector(`.vol-${first.get(letter)}`);
+            if (!entry) return;
+            const scroller = library_els.pages.view;
+            scroller.scrollTop += entry.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 12;
+            rail.querySelectorAll('[aria-current]').forEach(item => item.removeAttribute('aria-current'));
+            button.setAttribute('aria-current', 'true');
+            const target = table ? entry.querySelector('.table-link') : entry;
+            target.focus({preventScroll: true});
+        };
+        rail.append(button);
+    }
+}
+
 function populateLibrary(volumes, api_key) {
 	library_els.views.list.querySelectorAll('.list-entry').forEach(
 		e => e.remove()
@@ -196,6 +235,7 @@ function populateLibrary(volumes, api_key) {
 
 	library_els.views.list.insertBefore(list_fragment, space_taker);
 	library_els.views.table.appendChild(table_fragment);
+    updateLibraryAlphabet(volumes);
 };
 
 function fetchLibrary(api_key) {

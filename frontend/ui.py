@@ -10,7 +10,7 @@ from backend.internals.server import Server
 
 ui = Blueprint('ui', __name__)
 methods = ['GET']
-ALLOWED_THEMES = ["", "dark-mode"]
+ALLOWED_THEMES = ["", "dark-mode", "dark-mode black-mode"]
 
 
 def render(filename: str, **kwargs: Any) -> str:

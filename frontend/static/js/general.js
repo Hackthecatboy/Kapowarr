@@ -368,26 +368,14 @@ function setLocalStorage(keys_values) {
 };
 
 function setupTheme() {
-	const theme = getLocalStorage('theme')['theme']
-	let className = ''
-	if (theme === 'dark') {
-		className = 'dark-mode'
-	}
-
-	const root = document.querySelector(":root")
-	root.classList.remove(...root.classList.values())
-	if (className)
-		document.querySelector(":root").classList.add(className)
-
-	const expires = new Date()
-	if (className === "")
-		// Expire it, which removes it
-		expires.setTime(expires.getTime() - 86400 * 1000)
-	else
-		expires.setTime(expires.getTime() + 86400 * 1000)
-
-	document.cookie = `theme=${className}; expires=${expires.toUTCString()}; path=/;`
-	return
+    const saved = getLocalStorage('theme').theme;
+    const theme = ['light', 'dark', 'black'].includes(saved) ? saved : 'light';
+    const root = document.documentElement;
+    root.classList.toggle('dark-mode', theme !== 'light');
+    root.classList.toggle('black-mode', theme === 'black');
+    document.querySelectorAll('#header-theme-input, #theme-input').forEach(input => input.value = theme);
+    const className = theme === 'black' ? 'dark-mode black-mode' : theme === 'dark' ? 'dark-mode' : '';
+    document.cookie = `theme=${className}; max-age=31536000; path=/; SameSite=Lax`;
 }
 
 // code run on load
@@ -406,6 +394,11 @@ usingApiKey()
 
 setupLocalStorage();
 setupTheme();
+const headerTheme = document.querySelector('#header-theme-input');
+if (headerTheme) headerTheme.onchange = () => {
+    setLocalStorage({theme: headerTheme.value});
+    setupTheme();
+};
 
 document.querySelector('#toggle-nav').onclick = e =>
 	document.querySelector('#nav-bar').classList.toggle('show-nav');

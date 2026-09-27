@@ -520,3 +520,16 @@ main > *:not(.tool-bar-container) {
 		width: 3.5rem;
 	}
 }
+
+/* Browser controls follow the selected palette too. */
+:root { color-scheme: light; }
+:root.dark-mode { color-scheme: dark; }
+:root.black-mode {
+    --background-color: #000;
+    --foreground-color: #151515;
+    --hover-color: #242424;
+    --nav-background-color: #151515;
+    --volume-info-background-color: #151515;
+}
+.header-theme { display: flex; align-items: center; gap: .4rem; margin-left: auto; color: var(--header-color); }
+.header-theme select { padding: .4rem; border-radius: 4px; background: var(--foreground-color); color: var(--text-color); }
