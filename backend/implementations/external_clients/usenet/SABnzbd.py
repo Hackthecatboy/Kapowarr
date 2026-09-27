@@ -7,6 +7,7 @@ from backend.base.definitions import (BrokenClientReason, DownloadState as DS,
                                       DownloadType, ExternalClientField as ECF)
 from backend.implementations.external_client_manager import (
     BaseExternalClient, ExternalClients)
+from backend.implementations.managed_job import JobNeedsReview
 from backend.implementations.usenet_support import (CATEGORY, entries,
                                                     invalid_response, number,
                                                     request_json, status)
@@ -80,6 +81,18 @@ class SABnzbd(BaseExternalClient):
             return status(DS.FAILED_STATE, job.get('bytes'))
         # Repair, verification, extraction, moves and scripts are not completion.
         return status(DS.DOWNLOADING_STATE, job.get('bytes'), 100)
+
+    def delete_imported_files(self, download_id):
+        """Delete only a completed, tracked job after Kapowarr committed import."""
+        jobs = self._slots(self._call('history', nzo_ids=download_id, failed_only=0), 'history')
+        job = next((j for j in jobs if j.get('nzo_id') == download_id), None)
+        if job is None:
+            raise JobNeedsReview('Imported job is missing from SABnzbd history; file cleanup requires review')
+        if job.get('status') != 'Completed' or job.get('category') != CATEGORY:
+            raise JobNeedsReview('SABnzbd job is no longer completed in the kapowarr category; files were retained')
+        result = self._call('history', name='delete', value=download_id, del_files=1)
+        if result.get('status') is not True:
+            raise invalid_response()
 
     def delete_download(self, download_id, delete_files):
         # Only address the tracked ID and the section where it currently exists.

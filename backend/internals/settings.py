@@ -125,6 +125,7 @@ class PublicSettingsValues:
     download_source_order: CommaList = field(default_factory=lambda: CommaList(''))
     seeding_handling: SeedingHandling = SeedingHandling.COPY
     delete_completed_downloads: bool = True
+    delete_imported_sabnzbd_files: bool = False
 
     pack_inbox_folder: str = ''
     download_min_size_mb: int = 0

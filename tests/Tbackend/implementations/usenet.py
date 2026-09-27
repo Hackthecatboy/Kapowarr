@@ -93,6 +93,20 @@ class UsenetAdapters(unittest.TestCase):
             self.assertEqual(call.call_args.kwargs['value'], 'job')
             self.assertEqual(call.call_args.kwargs['del_files'], 0)
 
+    def test_sab_file_cleanup_requires_completed_owned_history_and_exact_id(self):
+        client=self.client(SABnzbd)
+        good=dict(nzo_id='job',status='Completed',category='kapowarr')
+        for slots in ([],[{**good,'status':'Failed'}],[{**good,'category':'other'}],
+                      [dict(nzo_id='job',status='Completed')]):
+            with patch.object(client,'_call',return_value={'history':{'slots':slots}}) as call:
+                with self.assertRaises(JobNeedsReview):
+                    client.delete_imported_files('job')
+                self.assertEqual(call.call_count,1)
+        with patch.object(client,'_call',side_effect=[{'history':{'slots':[good,dict(nzo_id='unrelated')]}},{'status':True}]) as call:
+            client.delete_imported_files('job')
+            self.assertEqual(call.call_args.args,('history',))
+            self.assertEqual(call.call_args.kwargs,dict(name='delete',value='job',del_files=1))
+
     def test_nzbget_connection_validates_rpc_and_category(self):
         for body in ({}, {'id': 2, 'result': '24'}, {'id': 1, 'error': {'code': 1}}, []):
             with patch('backend.implementations.external_clients.usenet.NZBGet.request_json', return_value=body):
@@ -445,7 +459,7 @@ class ManagedUsenet(unittest.TestCase):
 
     def test_worker_imports_before_cleanup_and_retains_entry_on_import_error(self):
         handler = SimpleNamespace(queue=[self.download], settings=SimpleNamespace(
-            sv=SimpleNamespace(delete_completed_downloads=True)))
+            sv=SimpleNamespace(delete_completed_downloads=True, delete_imported_sabnzbd_files=False)))
         self.download.run = Mock()
         self.download.update_status = Mock(side_effect=lambda: setattr(
             self.download, 'state', DS.IMPORTING_STATE))
@@ -475,6 +489,40 @@ class ManagedUsenet(unittest.TestCase):
             self.download.remove_from_client.assert_not_called()
             context.return_value.remove_from_queue.assert_not_called()
             self.assertEqual(handler.queue, [self.download])
+
+    def test_worker_sab_file_cleanup_is_opt_in_and_only_after_import(self):
+        for enabled, cleanup_history, fail_import in ((True,True,False),(False,True,False),(True,False,False),(True,True,True)):
+            with self.subTest(enabled=enabled,history=cleanup_history,fail=fail_import):
+                client=Mock(spec=SABnzbd)
+                self.download.external_client=client
+                self.download._external_id='job'
+                self.download.phase='submitted'
+                self.download.state=DS.DOWNLOADING_STATE
+                self.download.run=Mock()
+                self.download.update_status=Mock(side_effect=lambda: setattr(self.download,'state',DS.IMPORTING_STATE))
+                self.download.remove_from_client=Mock()
+                self.download._sleep_event=Mock()
+                self.download._sleep_event.wait.side_effect=lambda *a: self.download.stop(DS.SHUTDOWN_STATE)
+                handler=SimpleNamespace(queue=[self.download],settings=SimpleNamespace(sv=SimpleNamespace(
+                    delete_completed_downloads=cleanup_history,delete_imported_sabnzbd_files=enabled)))
+                def imported(download):
+                    if fail_import:
+                        raise OSError('Import failed')
+                    download.phase='imported'
+                def deleted(job):
+                    self.assertEqual(self.download.phase,'imported')
+                    self.assertEqual(job,'job')
+                client.delete_imported_files.side_effect=deleted
+                with patch('backend.features.usenet_downloads.import_completed',side_effect=imported), \
+                        patch('backend.features.usenet_downloads.WebSocket'), \
+                        patch('backend.features.usenet_downloads.PostProcessingContext') as context:
+                    run_usenet(handler,self.download)
+                self.assertEqual(client.delete_imported_files.call_count,int(enabled and cleanup_history and not fail_import))
+                if fail_import:
+                    context.return_value.remove_from_queue.assert_not_called()
+                    self.download.remove_from_client.assert_not_called()
+                elif cleanup_history and not enabled:
+                    self.download.remove_from_client.assert_called_once_with(delete_files=False)
 
     def recovery_handler(self):
         from backend.features.download_queue import DownloadHandler

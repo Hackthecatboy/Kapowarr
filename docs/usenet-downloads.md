@@ -97,3 +97,25 @@ Protocol references: [SABnzbd API](https://sabnzbd.org/wiki/configuration/4.5/ap
 [NZBGet append](https://nzbget.com/documentation/api/append/),
 [NZBGet history](https://nzbget.com/documentation/api/history/),
 [NZBGet editqueue](https://nzbget.com/documentation/api/editqueue/).
+
+## Optional SABnzbd file cleanup
+
+Settings → Download → **Delete Imported SABnzbd Files** is off by default.
+With **Delete Completed Downloads** also enabled, Kapowarr asks SABnzbd to delete
+only the tracked completed job and its payload after library matching and optional
+renaming have succeeded and the imported phase has been committed. Failed or held
+imports never reach this cleanup. The job must still be Completed in SABnzbd's
+kapowarr category; otherwise it stays held for review. No local folder deletion is
+performed. This uses SABnzbd's history deletion with `del_files=1` ([API guidance](https://github.com/sabnzbd/sabnzbd/issues/1486)).
+
+This does not affect torrents, Pack Inbox, or NZBGet. NZBGet history removal does
+not provide the same successful-payload deletion operation. Jobs already removed
+from Kapowarr's queue are not swept or retrospectively cleaned. Disable this option
+to keep source files, or disable Delete Completed Downloads to keep both history
+and files. Explicit cancellation remains a separate action.
+
+Test on the isolated development container with one new missing issue: enable
+both options, download/import it, confirm the library comic opens and its issue
+is linked, then confirm SABnzbd removed the completed job's payload. Test with the
+option off using another issue and confirm its source remains. With a deliberately
+incorrect mapping, the held import must retain its source even when cleanup is on.

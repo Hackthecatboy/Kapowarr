@@ -15,6 +15,7 @@ from backend.implementations.volumes import Volume
 from backend.internals.db import get_db
 from backend.internals.settings import Settings
 from backend.implementations.naming import mass_rename
+from backend.implementations.external_clients.usenet.SABnzbd import SABnzbd
 from backend.internals.server import (QueueStatusEvent,
                                       RemovedFromQueueEvent, WebSocket)
 
@@ -119,7 +120,11 @@ def run_usenet(handler, download):
                 if download.phase == 'imported':
                     # Only successful import permits automatic history cleanup.
                     if handler.settings.sv.delete_completed_downloads:
-                        download.remove_from_client(delete_files=False)
+                        if (handler.settings.sv.delete_imported_sabnzbd_files
+                                and isinstance(download.external_client, SABnzbd)):
+                            download.external_client.delete_imported_files(download.external_id)
+                        else:
+                            download.remove_from_client(delete_files=False)
                     context = PostProcessingContext(download)
                     download.state = DS.IMPORTING_STATE
                     context.add_to_history()
