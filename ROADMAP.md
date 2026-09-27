@@ -22,8 +22,9 @@ fork. The milestones below are priorities, not a claim of feature parity.
 - Optional SABnzbd payload cleanup after successful import is implemented, off by default; NAS validation pending.
 - Import naming now uses Rename Downloaded Files for Usenet, torrents and Pack Inbox copies.
   Duplicate Files provides SHA-256 and same-issue review for indexed library files.
-  Detection is user-verified; explicit deletion of selected identical copies with a retained
-  keeper is implemented and awaiting NAS validation.
+  Detection is user-verified. Explicit deletion supports identical copies and manually
+  reviewed same-issue editions, with a retained keeper and revalidation before deletion;
+  comprehensive NAS deletion validation remains pending.
   Five-second client polling and Activity refresh improve progress updates. These changes
   are locally tested; Synology validation remains pending.
 - System Logs supports recording-level selection, persistent display filters
@@ -92,33 +93,54 @@ See [download preferences](docs/download-preferences.md) for rules and the
 search-only NAS test. The user confirmed the preferences working. Automatic replacement of
 existing issues remains unimplemented; missing-issue selection is unchanged.
 
-### Pack workflow — new priority before remaining automation
+### Pack workflow — manual workflow exercised; unattended ingestion pending
 
 The user requested mixed-series/weekly-pack detection for downloads made outside
 Kapowarr, followed by recurring automatic download and ingestion.
 
-1. **Pack inbox (implemented; NAS validation next):** configured completed folder,
-   per-file matching to existing series/issues, selectable missing-issue copies,
-   and review rows for unmatched/ambiguous content. Source files remain intact.
-   A minimal persistent copy journal prevents unsafe replay of interrupted writes.
-   See [pack inbox setup and test](docs/pack-inbox.md).
-2. **Recurring scans and repeat protection (pending):** scheduled scanning,
-   content identity across moved/renamed files, recovery/review controls, and
-   duplicate prevention suitable for unattended repeated ingestion.
-3. **Recurring pack download rules (pending):** indexer/title/category/size rules
-   for weekly or mixed-series packs, remembered releases, and completed downloads
-   routed through the shared pack importer.
+1. **Pack inbox (implemented; managed-pack import user-exercised):** completed
+   folders are scanned per file, with selectable missing-issue matches and review
+   rows for unmatched/ambiguous content. The settling check is 30 seconds. A
+   persistent copy journal prevents unsafe replay of interrupted writes. Unnumbered
+   standalone books can match a unique eligible single-issue edition; that matching
+   extension is locally tested and still needs live confirmation.
+2. **GetComics pack downloads (implemented; manual flow user-exercised):** article
+   preview, supported HTTP download links, progress, and ZIP extraction feed the
+   inbox. **Find / Add Series** opens normal series search; adding a series still
+   requires a user choice and a fresh scan. Mega, torrent, RAR/7z and multipart
+   pack handling remain outside the automated download/extraction flow.
+3. **Managed-pack cleanup (implemented; user-exercised):** verified imported
+   sources are deleted from managed packs. **Finish Pack** previews and confirms
+   deletion of the original archive and remaining extracted files. External inbox
+   originals, including torrent-managed files, remain intact.
+4. **Past packs and weekly subscriptions (implemented; discovery user-exercised):**
+   paginated search, saved label/service rules, a user-selected weekday,
+   pause/resume, manual checks and tracked-article repeat protection. Subscriptions
+   can download for review; imports remain manual. Unattended scheduled downloads
+   and restart behavior still need live validation.
+5. **Inbox usability and structure cleanup (complete; locally verified):** compact
+   history, collapsible packs, file filters and visible-match selection are in place.
+   The five architecture/testing cleanup slices below are complete.
+6. **Recurring scans and safe unattended ingestion (pending):** scheduled scans,
+   content identity across moved/renamed files, held-copy recovery/review controls,
+   and duplicate prevention before enabling automatic import.
+7. **Broader recurring pack rules (pending):** indexer/category/size rules and
+   downloader routing beyond the implemented GetComics article subscriptions.
 
-Unknown series initially require review; automatic addition must be a separate
-opt-in feature. Outer pack archive extraction is also future work. Ordinary
-single-series download/import continues alongside this inbox.
+Automatic creation of unknown series remains a separate opt-in feature to design.
+Ordinary single-series download/import continues alongside this inbox. See
+[pack inbox setup and test](docs/pack-inbox.md).
+
+Next pack work should address repeat protection and recovery before unattended
+imports. The isolated torrent verification above remains outstanding independently.
 
 ### 5. Failed-download handling
 
 - [ ] Retain useful failure history and distinguish temporary connection failures.
 - [ ] Block unsuitable releases and try another matching release when enabled.
 - [ ] Bound retries and avoid repeated downloads of the same failed release.
-- [ ] Preserve files and require review when completion/import is uncertain.
+- [x] Preserve files and require review when completion/import is uncertain
+  (implemented for external downloads and pack imports; broader retry policy pending).
 
 ### 6. Remaining download clients and configuration
 
@@ -134,9 +156,11 @@ intermediate checkpoint, not the finished scope.
 ### 7. Health checks and history
 
 - [ ] Report unreachable clients/indexers and inaccessible or unmapped paths.
-- [ ] Show why a release was selected, rejected, retried or held for review.
+- [ ] Consolidate selection, rejection, retry and hold reasons into history
+  (manual-search explanations and queue/inbox review messages already exist).
 - [ ] Record download/import outcomes with actionable diagnostics.
-- [ ] Keep credentials out of diagnostics and exported logs.
+- [x] Redact named credentials in new logs and log viewing/downloads.
+  Broader diagnostics/export coverage still needs review.
 
 ## Validation and project references
 

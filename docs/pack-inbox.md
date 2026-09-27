@@ -94,7 +94,11 @@ packs; importing is still reviewed.
 Filesystem/database tests cover multi-series routing, checksum-preserving copies,
 owned/ambiguous/unmatched files, stale previews, changed sources, symlinks, folder
 boundaries, held/interrupted copies, repeat scans, authentication and migration.
-UI and desktop/mobile layout checks pass. Live Synology pack import is pending.
+Local UI and desktop/mobile layout checks have passed. The user has exercised
+managed GetComics pack download, extraction, selected import and cleanup on the
+isolated Synology deployment. Unattended scheduling and the latest matching and
+structure changes still need live validation. Repeatable DOM interaction checks
+are documented in [frontend tests](../tests/frontend/README.md).
 
 ## Naming imported copies
 
@@ -225,7 +229,8 @@ again automatically. If a pack is active, new releases wait for a subsequent che
 Pause/Resume controls stop or resume future checks; they do not cancel an already
 started download. Imports always require Pack Inbox review. Recurring automatic
 import, automatic retry, and discovering arbitrarily deep history remain outside
-this slice. Live subscription discovery still needs a test against current hosting.
+this slice. The user has exercised past-pack and subscription release discovery;
+unattended weekly download behavior still needs live validation.
 
 ## Keeping the inbox manageable
 
