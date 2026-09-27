@@ -231,8 +231,12 @@ Kapowarr architecture. Complete and verify each slice separately.
    other writes can proceed during file checks; failed publication rolls back
    to previous results. Import revalidation remains in place. NAS validation
    alongside imports/RSS remains pending.
-2. **Shared settings cache (pending):** prevent concurrent readers from caching
-   old settings between an update and its commit outside the Pack Inbox path.
+2. **Shared settings cache (implemented; locally tested):** cached settings are
+   keyed by connection, SQLite data version and local write count. Transactions
+   read directly so uncommitted values and read snapshots cannot enter the shared
+   cache; public settings use the same path. Tests cover concurrent commits,
+   rollback, delayed old reads and unchanged-read reuse. Existing transaction
+   boundaries are preserved. NAS validation remains pending.
 3. **Subscription edits (pending):** preserve unsaved weekday changes when an
    already-running polling request returns.
 4. **Pack download polling (pending):** prevent older refresh responses from

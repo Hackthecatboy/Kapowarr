@@ -14,6 +14,7 @@ from logging import INFO
 from os import urandom
 from os.path import abspath, isdir, join, sep
 from secrets import token_bytes
+from sqlite3 import Connection
 from typing import Any, Dict, Mapping
 
 from backend.base.custom_exceptions import (ClientNotWorking,
@@ -189,18 +190,33 @@ class Settings(metaclass=Singleton):
         commit()
         return
 
-    @lru_cache(1)
     def get_settings(self) -> SettingsValues:
-        """Get the settings, including internal ones.
+        """Read settings without sharing transaction-local or stale values.
 
-        Returns:
-            SettingsValues: The settings.
+        SQLite's data_version changes when another connection commits, while
+        total_changes covers writes made by this connection. Active transactions
+        bypass the cache so uncommitted values and snapshots never enter it.
         """
+        connection = get_db().connection
+        if connection.in_transaction:
+            return self._read_settings(connection)
+        version = connection.execute('PRAGMA data_version').fetchone()[0]
+        return self._cached_settings(connection, version, connection.total_changes)
+
+    @lru_cache(16)
+    def _cached_settings(
+        self, connection: Connection, data_version: int, total_changes: int
+    ) -> SettingsValues:
+        """Bound cached snapshots by connection and SQLite change counters."""
+        return self._read_settings(connection)
+
+    @staticmethod
+    def _read_settings(connection: Connection) -> SettingsValues:
+        # Use a separate cursor: settings reads must not interrupt a caller's
+        # iteration over the request's shared database cursor.
         db_values = {
             k: v
-            for k, v in get_db().execute(
-                "SELECT key, value FROM config;"
-            )
+            for k, v in connection.execute("SELECT key, value FROM config;")
             if k in SettingsValues.__dataclass_fields__
         }
 
@@ -219,7 +235,6 @@ class Settings(metaclass=Singleton):
 
         return SettingsValues(**db_values)
 
-    @lru_cache(1)
     def get_public_settings(self) -> PublicSettingsValues:
         """Get the public settings, so excluding internal ones.
 
@@ -236,8 +251,7 @@ class Settings(metaclass=Singleton):
 
     def clear_cache(self) -> None:
         """Clear the cache of the settings"""
-        self.get_settings.cache_clear()
-        self.get_public_settings.cache_clear()
+        self._cached_settings.cache_clear()
         return
 
     # Alias, better in one-liners
