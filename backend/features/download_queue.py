@@ -286,6 +286,9 @@ class DownloadHandler(metaclass=Singleton):
             except EnqueuingDownloadFailure:
                 pass
 
+            # A rejected download can write a blocklist entry. Release that
+            # transaction before the delay and the next network request.
+            get_db().connection.commit()
             sleep(1.0)
         return
 

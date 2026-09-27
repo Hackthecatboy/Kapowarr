@@ -64,9 +64,11 @@ an uncertain submission or partially completed import.
   Locally tested; NAS validation pending.
 - [ ] Investigate intermittent first-click Review Files failures/stale initial
   results reported on Synology; a subsequent click succeeds. Server logs needed.
-- [ ] Investigate database write contention during volume adds on Synology
-  (Thunderbolts: two `database is locked` failures). Adds now display a busy
-  error and restore the dialog; the competing writer is not yet identified.
+- [ ] Validate RSS sync alongside imports and volume adds on Synology.
+  User correlated database contention with RSS; fixed uncommitted task-history
+  and rejected-download blocklist writes spanning download preparation/network
+  work. Two-connection SQLite regression tests pass. Busy errors still restore
+  the add dialog; live concurrency validation remains pending.
 - [ ] Verify library import while the original continues seeding.
 - [ ] Verify restart recovery, mapped paths, ownership checks and queue cleanup.
 - [ ] Verify both Copy and Complete seeding modes.

@@ -112,6 +112,10 @@ class TaskHandler(metaclass=Singleton):
                 (task.action, task.display_title, round(time()))
             )
 
+            # Release task/settings writes before download preparation does
+            # network I/O, including when every result is a duplicate.
+            cursor.connection.commit()
+
             if not task.stop:
                 if isinstance(task, DownloadTask) and result:
                     DownloadHandler().add_multiple(
