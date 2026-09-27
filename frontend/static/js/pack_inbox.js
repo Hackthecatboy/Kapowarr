@@ -202,7 +202,20 @@ usingApiKey().then(apiKey => {
         const data = action === 'scan' ? {folder: folder.value} : {items: tokens || selected()};
         busy = true; controls(); status.classList.remove('error');
         status.textContent = action === 'import' ? 'Copying and verifying selected files…' : action === 'cleanup' ? 'Verifying the library copy before deleting its extracted source…' : 'Loading inbox…';
+        let completed = 0;
         try {
+            if (action === 'import') {
+                // Keep each verified copy in its own request. Never retry a
+                // failed request: the server may still be finishing that copy.
+                for (const token of data.items) {
+                    status.textContent = `Copying and verifying file ${completed + 1} of ${data.items.length}… Keep this page open.`;
+                    const result = await (await sendAPI('POST', '/pack-inbox/import', apiKey, {}, {items: [token]})).json();
+                    render(result.result);
+                    completed++;
+                }
+                status.textContent = `Processed ${completed} selected files. Check the results for imported or held copies.`;
+                return;
+            }
             const result = action === 'refresh'
                 ? await fetchAPI('/pack-inbox', apiKey)
                 : await (await sendAPI('POST', `/pack-inbox/${action}`, apiKey, {}, data)).json();
@@ -210,6 +223,11 @@ usingApiKey().then(apiKey => {
         } catch (error) {
             let message = 'Inbox operation failed. Refresh results to inspect any completed or held copies.';
             try { const response = await error.json(); if (response.error === 'InvalidKeyValue') message = String(response.result.value); } catch (_) {}
+            if (action === 'import') {
+                message = `Stopped after ${completed} of ${data.items.length} files received a result. The current copy may still be running. ${message}`;
+                if (error.status) message += ` HTTP ${error.status}.`;
+                message += ' Check System → Logs for details.';
+            }
             status.textContent = message; status.classList.add('error');
         } finally { busy = false; controls(); }
     }

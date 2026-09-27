@@ -250,5 +250,5 @@ main > div {
 	}
 }
 
-.series-picker-mode header, .series-picker-mode nav { display: none; }
+.series-picker-mode header, .series-picker-mode #nav-bar { display: none; }
 .series-picker-mode main { width: 100%; height: 100dvh; }

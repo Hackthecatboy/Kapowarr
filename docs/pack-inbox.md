@@ -41,8 +41,11 @@ Use the isolated development container and a small completed test folder:
    not produce another library copy. Unmatched files remain available for review.
 
 The folder is saved. **Refresh Results** reads saved results; **Save Folder & Scan**
-examines the filesystem again. Imports are limited to 100 selected files per
-request and scans to 2,000 candidate files. Choose a smaller completed weekly
+examines the filesystem again. Select up to 100 files at a time. The page imports them sequentially, one
+verified copy per request, and shows progress; keep the page open until it finishes.
+A failed request stops the batch without retrying a potentially running copy.
+Refresh results to inspect its state before selecting more files. Scans are
+limited to 2,000 candidate files. Choose a smaller completed weekly
 folder for larger inboxes.
 
 ## Matching and preservation

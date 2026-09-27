@@ -200,3 +200,45 @@ test('ambiguous issue selection waits for explicit choice without importing', as
     assert.equal(el('#inbox-series-issues').classList.contains('hidden'), false);
     assert.equal(el('#inbox-issue-selection').options[1].disabled, true);
 });
+
+test('100 selected imports run sequentially with one file per request', async t => {
+    const items = Array.from({length: 100}, (_, i) => ({
+        status: 'matched', relative_path: `${i}.cbz`, token: String(i)
+    }));
+    let active = 0;
+    const {el, state} = await page(t, {
+        items,
+        respond: async (path, data) => {
+            assert.equal(path, '/pack-inbox/import');
+            assert.equal(data.items.length, 1);
+            assert.equal(++active, 1);
+            await tick();
+            active--;
+            return {folder: '/inbox', items: []};
+        }
+    });
+    el('#inbox-select').click();
+    const pending = el('#inbox-import').onclick();
+    assert.equal(el('#inbox-import').disabled, true);
+    await pending;
+    assert.deepEqual(state.calls.map(call => call.data.items[0]), items.map(item => item.token));
+    assert.match(el('#inbox-status').textContent, /Processed 100/);
+});
+
+test('interrupted import stops without retrying or starting remaining files', async t => {
+    let requests = 0;
+    const {el, state} = await page(t, {
+        items: ['a', 'b', 'c'].map(token => ({status: 'matched', relative_path: token, token})),
+        respond: async () => {
+            if (++requests === 2) throw {status: 504, json: async () => { throw Error('Not JSON'); }};
+            return {folder: '/inbox', items: []};
+        }
+    });
+    el('#inbox-select').click();
+    await el('#inbox-import').onclick();
+    assert.equal(state.calls.length, 2);
+    assert.match(el('#inbox-status').textContent, /Stopped after 1 of 3/);
+    assert.match(el('#inbox-status').textContent, /may still be running/);
+    assert.match(el('#inbox-status').textContent, /HTTP 504/);
+    assert.equal(el('#inbox-refresh').disabled, false);
+});

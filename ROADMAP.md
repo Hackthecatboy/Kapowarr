@@ -211,6 +211,6 @@ Kapowarr architecture. Complete and verify each slice separately.
 5. **Repeatable frontend tests (complete; locally verified):** Pack Inbox DOM
    regression checks now live in `tests/frontend`, with pinned dependencies,
    [setup instructions](tests/frontend/README.md) and a dedicated CI workflow.
-   Ten tests cover import selection, history, cleanup confirmation, subscriptions,
+   Twelve tests cover sequential batch imports, interrupted requests, import selection, history, cleanup confirmation, subscriptions,
    download choices, per-file series selection and review-only category discovery. Browser appearance and live integrations still need
    separate validation.
