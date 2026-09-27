@@ -16,7 +16,7 @@ from backend.base.custom_exceptions import InvalidKeyValue
 from backend.base.file_extraction import extract_filename_data
 from backend.implementations.matching import match_title
 from backend.implementations.naming import mass_rename
-from backend.internals.db import get_db
+from backend.internals.db import KapowarrCursor, get_db
 from backend.internals.db_models import PackInboxDB
 from backend.internals.settings import Settings
 
@@ -317,6 +317,109 @@ def scan(folder: object) -> InboxListing:
         return listing()
 
 
+def _prepare_import(
+    root: Path, row: Dict[str, Any]
+) -> Tuple[Path, os.stat_result, Row, List[int], Path]:
+    """Revalidate the source, match and destination before journaling a copy."""
+    source = safe_source(root, row['relative_path'])
+    before = source.stat()
+    if before.st_size != row['size'] or str(before.st_mtime_ns) != row['mtime']:
+        raise ValueError('File changed since preview; scan again')
+    volume, ids, reason = classify(source.name)
+    if reason or volume is None or volume['id'] != row['volume_id'] or ids != json.loads(row['issue_ids']):
+        raise ValueError(reason or 'Library match changed; scan again')
+    library = Path(volume['folder'])
+    if not library.is_absolute() or library.is_symlink():
+        raise ValueError('Library destination requires review')
+    destination = library.resolve() / ('Pack-Inbox-' + row['token']) / source.name
+    return source, before, volume, ids, destination
+
+
+def _copy_verified(
+    source: Path, destination: Path, before: os.stat_result
+) -> None:
+    """Copy to an exclusive file, fsync and verify identity and checksum.
+
+    The caller must journal the import first. Failed output is retained for
+    review and exceptions propagate to the per-file hold handler.
+    """
+    destination.parent.mkdir(parents=True, exist_ok=False)
+    digest = hashlib.sha256()
+    descriptor = os.open(source, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
+    with os.fdopen(descriptor, 'rb') as incoming, destination.open('xb') as outgoing:
+        opened = os.fstat(incoming.fileno())
+        if (opened.st_ino, opened.st_size, opened.st_mtime_ns) != (before.st_ino, before.st_size, before.st_mtime_ns):
+            raise ValueError('Source changed before copying; review required')
+        for chunk in iter(lambda: incoming.read(1024 * 1024), b''):
+            digest.update(chunk)
+            outgoing.write(chunk)
+        outgoing.flush()
+        os.fsync(outgoing.fileno())
+    after = source.stat()
+    if (before.st_ino,before.st_size,before.st_mtime_ns) != (after.st_ino,after.st_size,after.st_mtime_ns):
+        raise ValueError('Source changed during copy; inspect the retained library copy')
+    with destination.open('rb') as copied:
+        if _digest(copied) != digest.hexdigest():
+            raise ValueError('Copy checksum mismatch; review required')
+
+
+def _bind_verified(
+    destination: Path, size: int, ids: List[int], cursor: KapowarrCursor
+) -> None:
+    """Recheck ownership under a write transaction, then commit issue bindings.
+
+    On failure the caller rolls back; the verified copy remains for review.
+    """
+    cursor.execute('BEGIN IMMEDIATE')
+    if any(PackInboxDB.existing_issue_file(i) for i in ids):
+        raise ValueError('An issue was imported elsewhere during copying; review the retained copy')
+    # Explicit verified issue bindings preserve this match during rescans.
+    file_id = PackInboxDB.add_library_file(str(destination), size)
+    PackInboxDB.bind_imported_issues([(file_id, i) for i in ids])
+    cursor.connection.commit()
+
+
+def _finish_import(
+    row: Dict[str, Any], volume: Row, destination: Path, cursor: KapowarrCursor
+) -> None:
+    """Rename if configured, commit completion, then verify source cleanup."""
+    if Settings().sv.rename_downloaded_files:
+        renamed = mass_rename(volume['id'], filepath_filter=[str(destination)],
+                              process_individual_files=False, keep_volume_folder=True)
+        if len(renamed) != 1:
+            raise ValueError('Renaming did not return the imported file; inspect library')
+        destination = Path(renamed[0])
+        PackInboxDB.set_destination(str(destination), row['token'])
+    PackInboxDB.mark_imported(row['token'])
+    cursor.connection.commit()
+    imported = PackInboxDB.journal_entry(row['token'])
+    _cleanup_imported(dict(imported))
+
+
+def _import_one(
+    root: Path, row: Dict[str, Any], cursor: KapowarrCursor
+) -> None:
+    """Run one import and preserve review versus held failure semantics.
+
+    The caller holds inbox_operation for the whole selected batch. The copy
+    flag changes only after the importing journal entry has been committed.
+    """
+    destination = None
+    copying = False
+    try:
+        source, before, volume, ids, destination = _prepare_import(root, row)
+        PackInboxDB.mark_importing(str(destination), row['token'])
+        cursor.connection.commit()
+        copying = True
+        _copy_verified(source, destination, before)
+        _bind_verified(destination, before.st_size, ids, cursor)
+        _finish_import(row, volume, destination, cursor)
+    except Exception as error:
+        cursor.connection.rollback()
+        PackInboxDB.set_state('held' if copying else 'review', str(error), row['token'])
+        cursor.connection.commit()
+
+
 def import_selected(tokens: object) -> InboxListing:
     """Revalidate, copy and bind up to 100 selected missing-issue matches.
 
@@ -342,61 +445,5 @@ def import_selected(tokens: object) -> InboxListing:
                 raise InvalidKeyValue('items', 'Preview changed or item cannot be imported; scan again')
             rows.append(dict(row))
         for row in rows:
-            destination = None
-            copying = False
-            try:
-                source = safe_source(root, row['relative_path'])
-                before = source.stat()
-                if before.st_size != row['size'] or str(before.st_mtime_ns) != row['mtime']:
-                    raise ValueError('File changed since preview; scan again')
-                volume, ids, reason = classify(source.name)
-                if reason or volume is None or volume['id'] != row['volume_id'] or ids != json.loads(row['issue_ids']):
-                    raise ValueError(reason or 'Library match changed; scan again')
-                library = Path(volume['folder'])
-                if not library.is_absolute() or library.is_symlink():
-                    raise ValueError('Library destination requires review')
-                destination = library.resolve() / ('Pack-Inbox-' + row['token']) / source.name
-                PackInboxDB.mark_importing(str(destination), row['token'])
-                cursor.connection.commit()
-                copying = True
-                destination.parent.mkdir(parents=True, exist_ok=False)
-                digest = hashlib.sha256()
-                descriptor = os.open(source, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
-                with os.fdopen(descriptor, 'rb') as incoming, destination.open('xb') as outgoing:
-                    opened = os.fstat(incoming.fileno())
-                    if (opened.st_ino, opened.st_size, opened.st_mtime_ns) != (before.st_ino, before.st_size, before.st_mtime_ns):
-                        raise ValueError('Source changed before copying; review required')
-                    for chunk in iter(lambda: incoming.read(1024 * 1024), b''):
-                        digest.update(chunk)
-                        outgoing.write(chunk)
-                    outgoing.flush()
-                    os.fsync(outgoing.fileno())
-                after = source.stat()
-                if (before.st_ino,before.st_size,before.st_mtime_ns) != (after.st_ino,after.st_size,after.st_mtime_ns):
-                    raise ValueError('Source changed during copy; inspect the retained library copy')
-                with destination.open('rb') as copied:
-                    if _digest(copied) != digest.hexdigest():
-                        raise ValueError('Copy checksum mismatch; review required')
-                cursor.execute('BEGIN IMMEDIATE')
-                if any(PackInboxDB.existing_issue_file(i) for i in ids):
-                    raise ValueError('An issue was imported elsewhere during copying; review the retained copy')
-                # Explicit verified issue bindings preserve this match during rescans.
-                file_id = PackInboxDB.add_library_file(str(destination), before.st_size)
-                PackInboxDB.bind_imported_issues([(file_id, i) for i in ids])
-                cursor.connection.commit()
-                if Settings().sv.rename_downloaded_files:
-                    renamed = mass_rename(volume['id'], filepath_filter=[str(destination)],
-                                          process_individual_files=False, keep_volume_folder=True)
-                    if len(renamed) != 1:
-                        raise ValueError('Renaming did not return the imported file; inspect library')
-                    destination = Path(renamed[0])
-                    PackInboxDB.set_destination(str(destination), row['token'])
-                PackInboxDB.mark_imported(row['token'])
-                cursor.connection.commit()
-                imported = PackInboxDB.journal_entry(row['token'])
-                _cleanup_imported(dict(imported))
-            except Exception as error:
-                cursor.connection.rollback()
-                PackInboxDB.set_state('held' if copying else 'review', str(error), row['token'])
-                cursor.connection.commit()
+            _import_one(root, row, cursor)
         return listing()

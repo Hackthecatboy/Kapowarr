@@ -6,11 +6,11 @@ from typing import Any, List, Mapping, TypedDict
 from bs4 import BeautifulSoup
 
 from backend.base.custom_exceptions import InvalidKeyValue
-from backend.base.definitions import PackSubscriptionListing
+from backend.base.definitions import PackSubscription, PackSubscriptionListing
 from backend.base.helpers import Session
 from backend.base.logging import LOGGER
 from backend.features import pack_downloads as downloads
-from backend.internals.db import get_db
+from backend.internals.db import KapowarrCursor, get_db
 from backend.internals.db_models import PackDownloadsDB, PackSubscriptionsDB
 
 SERVICES = ('GetComics', 'MediaFire', 'WeTransfer', 'Pixeldrain')
@@ -197,6 +197,116 @@ def _release_status(
     cursor.connection.commit()
 
 
+def _claim_check(
+    subscription: PackSubscription, force: bool, cursor: KapowarrCursor
+) -> bool:
+    """Persist a due scheduled attempt before network access.
+
+    Manual checks bypass the schedule without consuming a weekly attempt.
+    Database failures propagate outside the per-subscription network handler,
+    preserving the existing recovery boundary.
+    """
+    now = datetime.now()  # Follow the server/container timezone.
+    today = now.date().isoformat()
+    if not force:
+        if (now.weekday() != subscription['weekday']
+                or subscription['last_scheduled'] == today):
+            return False
+        # Persist before network access so restarts and failures do not
+        # turn a weekly check into hourly requests for the rest of the day.
+        PackSubscriptionsDB.mark_scheduled(subscription['id'], today)
+        cursor.connection.commit()
+    return True
+
+
+def _discover_releases(
+    subscription: PackSubscription, cursor: KapowarrCursor
+) -> None:
+    """Record at most three search pages, committing each completed page."""
+    # Bounded discovery; older pages are available via explicit
+    # historical search.
+    for page in range(1, 4):
+        result = search(subscription['query'], page)
+        for article in result['articles']:
+            date = re.search(
+                r'(20\d{2})[.\-](\d{2})[.\-](\d{2})',
+                article['title'])
+            release_date = '-'.join(date.groups()) if date else ''
+            if not all(
+                term in article['title'].casefold()
+                for term in subscription['query'].casefold().split()):
+                continue
+            try:
+                datetime.strptime(release_date, '%Y-%m-%d')
+                eligible = (
+                    subscription['created'] <= release_date
+                    <= datetime.now(timezone.utc).date().isoformat()
+                )
+            except ValueError:
+                eligible = False
+            PackSubscriptionsDB.record_release(
+                subscription['id'], article['url'], article['title'],
+                'pending' if eligible else 'review',
+                '' if eligible else (
+                    'Older or undated release; '
+                    'use Preview to choose it manually'
+                )
+            )
+        cursor.connection.commit()
+        if not result['has_more']:
+            break
+
+
+def _process_pending(subscription: PackSubscription) -> None:
+    """Review or submit pending releases, stopping when busy or paused.
+
+    Each release decision commits through _release_status. Provider errors
+    propagate to the per-subscription handler; pending releases remain saved.
+    """
+    pending = PackSubscriptionsDB.pending(subscription['id'])
+    for release in pending:
+        article = release['article']
+        if PackDownloadsDB.article_has_download(article):
+            _release_status(
+                subscription['id'],
+                article, 'tracked',
+                'A pack job already exists; no repeat download')
+            continue
+        if not subscription['automatic']:
+            _release_status(
+                subscription['id'],
+                article, 'review',
+                'New pack found; preview to choose a download')
+            continue
+        if downloads.has_active_download():
+            break  # Keep pending until the next scheduled check.
+        choices = downloads.preview(article)['choices']
+        matches = [
+            item for item in choices
+            if item['supported']
+            and item['service'] == subscription['service']
+            and subscription['link_filter'].casefold()
+            in item['label'].casefold()
+        ]
+        if len(matches) != 1:
+            _release_status(
+                subscription['id'],
+                article, 'review',
+                'No unique service/label match; '
+                'preview and select a link manually'
+            )
+            continue
+        if not PackSubscriptionsDB.is_enabled(subscription['id']):
+            break
+        downloads.start(matches[0]['token'], subscription['folder'])
+        _release_status(
+            subscription['id'],
+            article, 'tracked',
+            'Automatic pack download submitted; '
+            'imports still require review'
+        )
+
+
 def check(force: bool = False) -> None:
     """Discover releases and process eligible pending downloads.
 
@@ -213,91 +323,11 @@ def check(force: bool = False) -> None:
     cursor = get_db()
     subscriptions = PackSubscriptionsDB.fetch(enabled_only=True)
     for subscription in subscriptions:
-        now = datetime.now()  # Follow the server/container timezone.
-        today = now.date().isoformat()
-        if not force:
-            if (now.weekday() != subscription['weekday']
-                    or subscription['last_scheduled'] == today):
-                continue
-            # Persist before network access so restarts and failures do not
-            # turn a weekly check into hourly requests for the rest of the day.
-            PackSubscriptionsDB.mark_scheduled(subscription['id'], today)
-            cursor.connection.commit()
+        if not _claim_check(subscription, force, cursor):
+            continue
         try:
-            # Bounded discovery; older pages are available via explicit
-            # historical search.
-            for page in range(1, 4):
-                result = search(subscription['query'], page)
-                for article in result['articles']:
-                    date = re.search(
-                        r'(20\d{2})[.\-](\d{2})[.\-](\d{2})',
-                        article['title'])
-                    release_date = '-'.join(date.groups()) if date else ''
-                    if not all(
-                        term in article['title'].casefold()
-                        for term in subscription['query'].casefold().split()):
-                        continue
-                    try:
-                        datetime.strptime(release_date, '%Y-%m-%d')
-                        eligible = (
-                            subscription['created'] <= release_date
-                            <= datetime.now(timezone.utc).date().isoformat()
-                        )
-                    except ValueError:
-                        eligible = False
-                    PackSubscriptionsDB.record_release(
-                        subscription['id'], article['url'], article['title'],
-                        'pending' if eligible else 'review',
-                        '' if eligible else (
-                            'Older or undated release; '
-                            'use Preview to choose it manually'
-                        )
-                    )
-                cursor.connection.commit()
-                if not result['has_more']:
-                    break
-            pending = PackSubscriptionsDB.pending(subscription['id'])
-            for release in pending:
-                article = release['article']
-                if PackDownloadsDB.article_has_download(article):
-                    _release_status(
-                        subscription['id'],
-                        article, 'tracked',
-                        'A pack job already exists; no repeat download')
-                    continue
-                if not subscription['automatic']:
-                    _release_status(
-                        subscription['id'],
-                        article, 'review',
-                        'New pack found; preview to choose a download')
-                    continue
-                if downloads.has_active_download():
-                    break  # Keep pending until the next scheduled check.
-                choices = downloads.preview(article)['choices']
-                matches = [
-                    item for item in choices
-                    if item['supported']
-                    and item['service'] == subscription['service']
-                    and subscription['link_filter'].casefold()
-                    in item['label'].casefold()
-                ]
-                if len(matches) != 1:
-                    _release_status(
-                        subscription['id'],
-                        article, 'review',
-                        'No unique service/label match; '
-                        'preview and select a link manually'
-                    )
-                    continue
-                if not PackSubscriptionsDB.is_enabled(subscription['id']):
-                    break
-                downloads.start(matches[0]['token'], subscription['folder'])
-                _release_status(
-                    subscription['id'],
-                    article, 'tracked',
-                    'Automatic pack download submitted; '
-                    'imports still require review'
-                )
+            _discover_releases(subscription, cursor)
+            _process_pending(subscription)
             PackSubscriptionsDB.mark_checked(
                 subscription['id'], datetime.now(timezone.utc).isoformat(),
                 'Check completed'

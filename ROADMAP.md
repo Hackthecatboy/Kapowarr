@@ -166,8 +166,10 @@ Kapowarr architecture. Complete and verify each slice separately.
    journal, matching and cleanup queries use `PackInboxDB`. Workflows retain
    their original commit/rollback boundaries and filesystem recovery ordering;
    the import ownership check still runs inside `BEGIN IMMEDIATE`.
-3. **Smaller workflow functions:** split subscription checking and importing
-   into named stages while retaining transaction, recovery and lock boundaries.
+3. **Smaller workflow functions (complete; locally verified):** subscription
+   checks now separate schedule claiming, article discovery and pending-release
+   processing. Imports separate validation, verified copying, issue binding and
+   completion, with the original batch lock, commits and per-file hold handling.
 4. **Remaining types and formatting:** replace internal `Any` dictionaries where
    practical and clean up long statements using project conventions.
 5. **Repeatable frontend tests:** move the temporary UI regression checks into
