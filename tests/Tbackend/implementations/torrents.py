@@ -195,6 +195,7 @@ class TorrentAdapters(unittest.TestCase):
 
 class ManagedTorrents(unittest.TestCase):
     def setUp(self):
+        self.patch('backend.features.usenet_downloads.Settings', return_value=SimpleNamespace(sv=SimpleNamespace(rename_downloaded_files=False)))
         setup_db_adapters_and_converters()
         self.db = sqlite3.connect(':memory:', detect_types=sqlite3.PARSE_DECLTYPES)
         self.addCleanup(self.db.close)

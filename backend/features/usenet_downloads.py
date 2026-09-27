@@ -13,6 +13,8 @@ from backend.implementations.file_matching import scan_files
 from backend.implementations.managed_job import JobNeedsReview, JobPathNeedsReview, save_phase
 from backend.implementations.volumes import Volume
 from backend.internals.db import get_db
+from backend.internals.settings import Settings
+from backend.implementations.naming import mass_rename
 from backend.internals.server import (QueueStatusEvent,
                                       RemovedFromQueueEvent, WebSocket)
 
@@ -67,6 +69,9 @@ def import_completed(download):
     if not matched_numbers or not expected.issubset(matched_numbers):
         raise JobNeedsReview(
             'Copied files did not match library issues. Inspect the import folder; originals were retained.')
+    if Settings().sv.rename_downloaded_files:
+        download.files = mass_rename(download.volume_id, filepath_filter=files,
+                                     process_individual_files=False, keep_volume_folder=True)
     save_phase(download.id, 'imported')
     download.phase = 'imported'
 

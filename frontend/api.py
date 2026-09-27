@@ -22,6 +22,7 @@ from backend.base.definitions import (BlocklistReason, BlocklistReasonID,
 from backend.base.files import folder_path
 from backend.base.helpers import hash_credential
 from backend.base.logging import LOGGER, get_log_file_contents, get_recent_logs
+from backend.features.duplicates import scan as scan_duplicates
 from backend.features.download_queue import (DownloadHandler,
                                              delete_download_history,
                                              get_download_history)
@@ -792,6 +793,16 @@ def api_remote_mapping(id: int):
     elif request.method == 'DELETE':
         remote_mapping.delete()
         return return_api({})
+
+
+@api.route('/duplicates/scan', methods=['POST'])
+@error_handler
+@auth
+def api_duplicates_scan():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise InvalidKeyValue('body', 'Expected an object')
+    return return_api(scan_duplicates(data.get('volume_id')))
 
 
 @api.route('/pack-inbox', methods=['GET'])

@@ -34,7 +34,7 @@ class PackInbox(unittest.TestCase):
         self.db.executescript(DB_SCHEMA)
         self.cursor = self.db.cursor(factory=KapowarrCursor)
         self.start_patch('backend.features.pack_inbox.get_db', return_value=self.cursor)
-        self.settings = SimpleNamespace(sv=SimpleNamespace(pack_inbox_folder=''))
+        self.settings = SimpleNamespace(sv=SimpleNamespace(pack_inbox_folder='', rename_downloaded_files=False))
         self.settings.update = lambda values: setattr(self.settings.sv, 'pack_inbox_folder', values['pack_inbox_folder'])
         self.start_patch('backend.features.pack_inbox.Settings', return_value=self.settings)
         self.db.execute('INSERT INTO root_folders(id,folder) VALUES(1,?)', (str(self.library),))
@@ -63,6 +63,41 @@ class PackInbox(unittest.TestCase):
 
     def scan(self):
         return pack_inbox.scan(str(self.inbox))['items']
+
+    def test_rename_setting_updates_journal_but_preserves_source(self):
+        source=self.comic('Alpha Comics 001 (2026).cbz')
+        original=source.read_bytes()
+        token=self.scan()[0]['token']
+        self.settings.sv.rename_downloaded_files=True
+        def rename(volume_id, filepath_filter, **kwargs):
+            self.assertTrue(kwargs['keep_volume_folder'])
+            old=Path(filepath_filter[0])
+            target=old.parent / 'Normalized 001.cbz'
+            old.rename(target)
+            self.db.execute('UPDATE files SET filepath=? WHERE filepath=?',(str(target),str(old)))
+            return [str(target)]
+        with patch('backend.features.pack_inbox.mass_rename',side_effect=rename) as renamer:
+            result=pack_inbox.import_selected([token])
+        renamer.assert_called_once()
+        row=result['items'][0]
+        self.assertEqual(row['status'],'imported')
+        self.assertEqual(Path(row['destination']).name,'Normalized 001.cbz')
+        self.assertEqual(source.read_bytes(),original)
+        self.assertEqual(Path(row['destination']).read_bytes(),original)
+
+    def test_rename_failure_holds_verified_copy_without_replaying(self):
+        source=self.comic('Alpha Comics 001 (2026).cbz')
+        token=self.scan()[0]['token']
+        self.settings.sv.rename_downloaded_files=True
+        with patch('backend.features.pack_inbox.mass_rename',side_effect=OSError('rename unavailable')):
+            result=pack_inbox.import_selected([token])
+        row=result['items'][0]
+        self.assertEqual(row['status'],'held')
+        self.assertTrue(Path(row['destination']).exists())
+        self.assertTrue(source.exists())
+        self.assertEqual(self.db.execute('SELECT count(*) FROM issues_files').fetchone()[0],1)
+        with self.assertRaises(InvalidKeyValue):
+            pack_inbox.import_selected([token])
 
     def test_mixed_pack_imports_to_two_series_and_preserves_sources(self):
         a = self.comic('Week 1/Alpha Comics 001 (2026).cbz')

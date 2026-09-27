@@ -19,6 +19,10 @@ fork. The milestones below are priorities, not a claim of feature parity.
   NZBGet and Transmission still need live validation.
 - Newznab/Torznab manual search, automatic search and RSS routing are implemented.
   Live unattended automation and recovery still need validation.
+- Import naming now uses Rename Downloaded Files for Usenet, torrents and Pack Inbox copies.
+  Duplicate Files provides read-only SHA-256 and same-issue review for indexed library files.
+  Five-second client polling and Activity refresh improve progress updates. These changes
+  are locally tested; Synology validation remains pending.
 - System Logs supports recording-level selection, persistent display filters
   and auto-refresh. New logs and log viewing/downloads redact named credentials.
 - Manual search has a persistent Matches only filter. Download-client settings

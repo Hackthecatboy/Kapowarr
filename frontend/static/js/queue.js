@@ -10,6 +10,7 @@ const QEls = {
 // Filling data
 //
 function addQueueEntry(api_key, obj) {
+    if (document.querySelector(`#queue > tr[data-id="${obj.id}"]`)) { updateQueueEntry(obj); return; }
 	const entry = QEls.queue_entry.cloneNode(true);
 	entry.dataset.id = obj.id;
 	QEls.queue.appendChild(entry);
@@ -69,15 +70,30 @@ function updateQueueEntry(obj) {
 };
 
 function removeQueueEntry(id) {
-	document.querySelector(`#queue > tr[data-id="${id}"]`).remove();
+	document.querySelector(`#queue > tr[data-id="${id}"]`)?.remove();
 };
 
-function fillQueue(api_key) {
-	fetchAPI('/activity/queue', api_key)
-	.then(json => {
-		QEls.queue.innerHTML = '';
-		json.result.forEach(obj => addQueueEntry(api_key, obj));
-	})
+let queueRefreshPending = false;
+async function fillQueue(api_key) {
+    if (queueRefreshPending) return;
+    queueRefreshPending = true;
+    try {
+        const json = await fetchAPI('/activity/queue', api_key);
+        const ids = new Set(json.result.map(obj => String(obj.id)));
+        for (const entry of [...QEls.queue.children])
+            if (!ids.has(entry.dataset.id)) entry.remove();
+        json.result.forEach((obj, index) => {
+            addQueueEntry(api_key, obj);
+            const entry = document.querySelector(`#queue > tr[data-id="${obj.id}"]`);
+            QEls.queue.appendChild(entry);
+            entry.querySelector('.move-up-dl').onclick = () => moveEntry(obj.id, index - 1, api_key);
+            entry.querySelector('.move-down-dl').onclick = () => moveEntry(obj.id, index + 1, api_key);
+        });
+    } catch (error) {
+        console.warn('Queue refresh failed; will retry');
+    } finally {
+        queueRefreshPending = false;
+    }
 };
 
 //
@@ -128,6 +144,9 @@ usingApiKey()
 	fillQueue(api_key);
 	socket.on('queue_added', data => addQueueEntry(api_key, data));
 	socket.on('queue_status', updateQueueEntry);
+    socket.on('connect', () => fillQueue(api_key));
+    setInterval(() => { if (!document.hidden) fillQueue(api_key); }, 5000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) fillQueue(api_key); });
 	socket.on('queue_ended', data => removeQueueEntry(data.id));
     QEls.tool_bar.remove_all.onclick = e => deleteAll(api_key);
 });

@@ -12,6 +12,7 @@ from backend.base.custom_exceptions import InvalidKeyValue
 from backend.base.file_extraction import extract_filename_data
 from backend.implementations.matching import match_title
 from backend.internals.db import get_db
+from backend.implementations.naming import mass_rename
 from backend.internals.settings import Settings
 
 _LOCK = Lock()
@@ -203,6 +204,14 @@ def import_selected(tokens):
                 # Explicit verified issue bindings preserve this match during rescans.
                 file_id = cursor.execute('INSERT INTO files(filepath,size) VALUES(?,?)', (str(destination), before.st_size)).lastrowid
                 cursor.executemany('INSERT INTO issues_files(file_id,issue_id,forced) VALUES(?,?,1)', [(file_id,i) for i in ids])
+                cursor.connection.commit()
+                if Settings().sv.rename_downloaded_files:
+                    renamed = mass_rename(volume['id'], filepath_filter=[str(destination)],
+                                          process_individual_files=False, keep_volume_folder=True)
+                    if len(renamed) != 1:
+                        raise ValueError('Renaming did not return the imported file; inspect library')
+                    destination = Path(renamed[0])
+                    cursor.execute('UPDATE pack_inbox SET destination=? WHERE token=?', (str(destination), row['token']))
                 cursor.execute("UPDATE pack_inbox SET status='imported',message='Copied and verified; original retained' WHERE token=?", (row['token'],))
                 cursor.connection.commit()
             except Exception as error:

@@ -1,0 +1,6 @@
+#duplicates-page p { margin-block: .75rem; }
+#duplicates-form { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-block: 1rem; }
+#duplicates-form input { padding: .5rem; }
+#duplicates-form button { padding: .6rem 1rem; background: var(--accent-color); color: var(--nav-background-color); border-radius: 4px; }
+#duplicates-results section { padding: 1rem; margin-block: 1rem; border: 1px solid var(--border-color); }
+#duplicates-results li { margin: .5rem 0 .5rem 1.5rem; overflow-wrap: anywhere; }

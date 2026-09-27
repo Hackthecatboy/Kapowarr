@@ -141,7 +141,7 @@ class Constants:
     when a challenge is presented
     """
 
-    EXTERNAL_CLIENT_UPDATE_INTERVAL = 30 # seconds
+    EXTERNAL_CLIENT_UPDATE_INTERVAL = 5 # seconds
     "The interval in seconds between status updates from external clients"
 
     EXTERNAL_DOWNLOAD_TAG = "kapowarr"

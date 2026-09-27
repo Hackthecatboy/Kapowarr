@@ -58,12 +58,13 @@ review entries and retains the client job and all files. See the
 [queue recovery walkthrough](queue-recovery.md).
 
 Imports copy regular supported media into a unique `Kapowarr-<id>-<job-hash>`
-subfolder in the volume folder, preserve filenames, and use the existing library
-scanner. A range must match its expected library issues before import succeeds.
+subfolder in the volume folder and use the existing library scanner. After matching,
+Rename Downloaded Files applies the configured naming format to library copies. A range must match its expected library issues before import succeeds.
 Existing destinations and symlinked payloads are refused. Original client files
-are retained. Automatic renaming and conversion are not connected to this
-Usenet import path yet. Per-job speed is currently reported as zero rather than
-attributing the client's global speed to each job.
+are retained. Conversion is not connected to this import path yet. Per-job speed
+is estimated from downloaded bytes between polls; the first sample is zero.
+External jobs poll every five seconds. Activity also refreshes every five seconds
+while visible and on WebSocket reconnect, so a missed event can recover.
 
 If an import is interrupted, the entry pauses instead of replaying file writes.
 Inspect its library subfolder and client payload; recover or remove partial

@@ -90,3 +90,15 @@ Filesystem/database tests cover multi-series routing, checksum-preserving copies
 owned/ambiguous/unmatched files, stale previews, changed sources, symlinks, folder
 boundaries, held/interrupted copies, repeat scans, authentication and migration.
 UI and desktop/mobile layout checks pass. Live Synology pack import is pending.
+
+## Naming imported copies
+
+Settings → Media Management → Rename Downloaded Files also applies to Pack Inbox.
+After checksum verification and issue binding, only the new library copy is renamed
+using the existing naming formats. The journal records its final path. The source
+is untouched. Disable the setting to preserve incoming names. Rename failures stay
+held for review and do not replay the copy automatically.
+
+Use Volumes → Duplicate Files to review indexed library duplicates. This does not
+change the inbox's rules for already-owned issues or add content deduplication to
+recurring pack scans. See [duplicate review](duplicate-files.md).

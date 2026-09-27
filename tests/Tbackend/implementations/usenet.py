@@ -146,6 +146,7 @@ class UsenetAdapters(unittest.TestCase):
 
 class ManagedUsenet(unittest.TestCase):
     def setUp(self):
+        self.patch('backend.features.usenet_downloads.Settings', return_value=SimpleNamespace(sv=SimpleNamespace(rename_downloaded_files=False)))
         self.patch('backend.implementations.download_preferences.Settings', return_value=SimpleNamespace(sv=PublicSettingsValues()))
         setup_db_adapters_and_converters()
         self.db = sqlite3.connect(':memory:', detect_types=sqlite3.PARSE_DECLTYPES)
@@ -182,6 +183,22 @@ class ManagedUsenet(unittest.TestCase):
         patcher = patch(*args, **kwargs)
         self.addCleanup(patcher.stop)
         return patcher.start()
+
+    def test_progress_and_per_job_speed_follow_client_samples(self):
+        self.client.get_download.return_value = dict(state=DS.DOWNLOADING_STATE, size=1000,
+                                                    progress=10, speed=0)
+        with patch('backend.implementations.download_clients.Usenet.monotonic') as clock:
+            clock.return_value=100
+            self.download.update_status()
+            self.assertEqual(self.download.progress,10)
+            clock.return_value=105
+            self.client.get_download.return_value['progress']=60
+            self.download.update_status()
+            self.assertEqual(self.download.progress,60)
+            self.assertEqual(self.download.speed,100)
+            self.client.get_download.return_value['state']=DS.PAUSED_STATE
+            self.download.update_status()
+            self.assertEqual(self.download.speed,0)
 
     def test_completion_delay_waits_before_path_checks_and_resets(self):
         self.client.get_download.return_value = dict(
@@ -304,8 +321,19 @@ class ManagedUsenet(unittest.TestCase):
             self.cursor.execute("INSERT INTO issues(id, volume_id, comicvine_id, issue_number, calculated_issue_number) VALUES(1, 1, 1, '1', 1)")
             self.cursor.execute('INSERT INTO files(id, filepath, size) VALUES(1, ?, 5)', (filepath_filter[0],))
             self.cursor.execute('INSERT INTO issues_files(file_id, issue_id) VALUES(1, 1)')
-        with patch('backend.features.usenet_downloads.scan_files', side_effect=scan):
+        def rename(volume_id, filepath_filter, **kwargs):
+            self.assertTrue(kwargs['keep_volume_folder'])
+            copied = Path(filepath_filter[0])
+            self.assertNotEqual(copied, comic)
+            target = copied.parent / 'Normalized 001.cbz'
+            copied.rename(target)
+            return [str(target)]
+        with patch('backend.features.usenet_downloads.scan_files', side_effect=scan), \
+                patch('backend.features.usenet_downloads.Settings', return_value=SimpleNamespace(sv=SimpleNamespace(rename_downloaded_files=True))), \
+                patch('backend.features.usenet_downloads.mass_rename', side_effect=rename) as renamer:
             import_completed(self.download)
+            renamer.assert_called_once()
+            self.assertEqual(Path(self.download.files[0]).name,'Normalized 001.cbz')
         self.assertEqual(Path(self.download.files[0]).read_bytes(), b'comic')
         self.assertEqual(comic.read_bytes(), b'comic')
         self.assertEqual(sibling.read_bytes(), b'keep')

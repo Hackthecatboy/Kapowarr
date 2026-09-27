@@ -3,7 +3,7 @@
 from pathlib import Path
 from threading import Event
 from time import monotonic
-from typing import Optional
+from typing import Optional, Tuple
 
 from backend.base.custom_exceptions import IssueNotFound
 from backend.base.definitions import (DownloadClientIdentifier, DownloadState,
@@ -52,6 +52,7 @@ class UsenetDownload(ExternalDownload, BaseDirectDownload):
         self.processing_review = False
         self.completed_since: Optional[float] = None
         self.completion_wait_remaining = 0
+        self._progress_sample: Optional[Tuple[float, float]] = None
         self.retry_requested = Event()
         self.forget_requested = Event()
         self._state = DownloadState.QUEUED_STATE
@@ -86,6 +87,18 @@ class UsenetDownload(ExternalDownload, BaseDirectDownload):
             raise JobNeedsReview(
                 'Tracked job is missing from the client. Check queue and history; it will not be resubmitted.')
         self._progress, self._speed, self._size = info['progress'], info['speed'], info['size']
+        # Usenet APIs do not consistently expose per-job speed. Estimate it
+        # from this job's downloaded bytes rather than showing client-wide speed.
+        sampled_at = monotonic()
+        downloaded = max(0, self._size) * self._progress / 100
+        previous = self._progress_sample
+        if info['state'] == DownloadState.DOWNLOADING_STATE:
+            if previous is not None and sampled_at > previous[0] and not self._speed:
+                self._speed = max(0, (downloaded - previous[1]) / (sampled_at - previous[0]))
+            self._progress_sample = (sampled_at, downloaded)
+        else:
+            self._progress_sample = None
+            self._speed = 0
         if self.state in (DownloadState.CANCELED_STATE, DownloadState.SHUTDOWN_STATE):
             return
         if info['state'] == DownloadState.FAILED_STATE:

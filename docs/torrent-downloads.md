@@ -65,8 +65,9 @@ for review on upgrade. Inspect those in the client instead of blindly requeueing
 
 Metadata fetches, rechecks, moves, unknown states and incomplete stopped torrents
 never trigger import. Successful imports copy supported media to a unique library
-subfolder, preserve filenames and use the normal comic scanner. Automatic rename
-and conversion are not connected to this copy importer yet. Original torrent
+subfolder and use the normal comic scanner. Rename Downloaded Files then applies
+the configured naming formats to library copies. Conversion is not connected to
+this copy importer yet. Original torrent
 payloads remain intact. In Copy mode, the queue continues tracking seeding after
 import; the persisted import phase prevents a second copy after restarting.
 
@@ -93,3 +94,7 @@ API references: [qBittorrent Web API](https://github.com/qbittorrent/qBittorrent
 [Transmission RPC](https://github.com/transmission/transmission/blob/main/docs/rpc-spec.md).
 
 Release selection filters and ranking: [download preferences](download-preferences.md).
+
+External jobs poll every five seconds. Activity refreshes every five seconds while
+visible and after a WebSocket reconnect; qBittorrent/Transmission supply progress
+and speed. This is polling, so the display may lag the client by a polling interval.
