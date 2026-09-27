@@ -8,7 +8,7 @@ usingApiKey().then(apiKey => {
     const selected = () => [...rows.querySelectorAll('input:checked')].map(input => input.value);
     function controls() {
         form.querySelectorAll('button,input').forEach(el => el.disabled = busy);
-        rows.querySelectorAll('input').forEach(el => el.disabled = busy);
+        rows.querySelectorAll('input,button').forEach(el => el.disabled = busy);
         importButton.textContent = `Import Selected Copies (${selected().length})`;
         importButton.disabled = busy || !selected().length || selected().length > 100;
     }
@@ -30,6 +30,13 @@ usingApiKey().then(apiKey => {
             file.textContent = item.relative_path;
             const info = document.createElement('td');
             info.textContent = `${item.status}: ${item.message}`;
+            if (item.can_cleanup) {
+                const cleanup = document.createElement('button');
+                cleanup.type = 'button'; cleanup.className = 'inbox-cleanup';
+                cleanup.textContent = 'Delete Imported Source';
+                cleanup.onclick = () => request('cleanup', [item.token]);
+                info.append(document.createElement('br'), cleanup);
+            }
             if (item.series_query) {
                 const action = document.createElement('p');
                 const add = document.createElement('a');
@@ -49,11 +56,11 @@ usingApiKey().then(apiKey => {
         }
         status.textContent = `${data.items.length} files. Select up to 100 matched files to import. Held or interrupted copies require review before any further action.`;
     }
-    async function request(action) {
+    async function request(action, tokens = null) {
         if (busy) return;
-        const data = action === 'scan' ? {folder: folder.value} : {items: selected()};
+        const data = action === 'scan' ? {folder: folder.value} : {items: tokens || selected()};
         busy = true; controls(); status.classList.remove('error');
-        status.textContent = action === 'import' ? 'Copying and verifying selected files…' : 'Loading inbox…';
+        status.textContent = action === 'import' ? 'Copying and verifying selected files…' : action === 'cleanup' ? 'Verifying the library copy before deleting its extracted source…' : 'Loading inbox…';
         try {
             const result = action === 'refresh'
                 ? await fetchAPI('/pack-inbox', apiKey)

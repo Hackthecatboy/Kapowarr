@@ -857,6 +857,8 @@ def api_pack_inbox_action(action: str):
         return return_api(pack_inbox.scan(data.get('folder')))
     if action == 'import':
         return return_api(pack_inbox.import_selected(data.get('items')))
+    if action == 'cleanup':
+        return return_api(pack_inbox.cleanup_selected(data.get('items')))
     raise InvalidKeyValue('action', action)
 
 

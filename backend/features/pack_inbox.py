@@ -89,10 +89,78 @@ def classify(name):
     return volume, ids, 'Already owned (all or part of this file)' if owned else ''
 
 
+def _managed_source(source):
+    """Only extracted files owned by completed Kapowarr pack jobs are disposable."""
+    for row in get_db().execute("SELECT folder FROM pack_downloads WHERE status='ready'").fetchall():
+        ready = Path(row[0]) / 'ready'
+        if (ready.is_absolute() and ready in source.parents
+                and not any(p.is_symlink() for p in (ready, *ready.parents))):
+            return ready
+    return None
+
+
+def _cleanup_imported(row):
+    cursor = get_db()
+    source = Path(row['root']) / row['relative_path']
+    ready = _managed_source(source)
+    if ready is None:
+        return  # External inboxes may be torrent-managed or read-only.
+    try:
+        source = safe_source(valid_root(str(ready)), str(source.relative_to(ready)))
+        before = source.stat()
+        if before.st_size != row['size'] or str(before.st_mtime_ns) != row['mtime']:
+            raise ValueError('Source changed since import; retained for review')
+        destination = Path(row['destination'])
+        record = cursor.execute('''SELECT f.id,v.folder,r.folder AS root FROM files f
+            JOIN volumes v ON v.id=? JOIN root_folders r ON r.id=v.root_folder
+            WHERE f.filepath=?''', (row['volume_id'], str(destination))).fetchone()
+        if record is None or any(p.is_symlink() for p in (destination, *destination.parents)):
+            raise ValueError('Library copy missing or symlinked; source retained')
+        if (Path(record['folder']).resolve() not in destination.resolve().parents
+                or Path(record['root']).resolve() not in destination.resolve().parents):
+            raise ValueError('Library copy moved outside its library; source retained')
+        bound = {r[0] for r in cursor.execute('SELECT issue_id FROM issues_files WHERE file_id=?', (record['id'],)).fetchall()}
+        if not set(json.loads(row['issue_ids'])).issubset(bound):
+            raise ValueError('Library issue bindings changed; source retained')
+        copied_before = destination.stat()
+        with source.open('rb') as original, destination.open('rb') as copied:
+            if _digest(original) != _digest(copied):
+                raise ValueError('Library copy differs from source; source retained')
+        def identity(value):
+            return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
+        if identity(source.stat()) != identity(before) or identity(destination.stat()) != identity(copied_before):
+            raise ValueError('Files changed during cleanup verification; source retained')
+        source.unlink()
+        message = 'Copied and verified; extracted source deleted'
+    except (OSError, ValueError) as error:
+        message = 'Copied and verified; cleanup needs review: ' + str(error)
+    cursor.execute('UPDATE pack_inbox SET message=? WHERE token=?', (message, row['token']))
+    cursor.connection.commit()
+
+
+def cleanup_selected(tokens):
+    if not isinstance(tokens, list) or not 1 <= len(tokens) <= 100 or any(not isinstance(t, str) for t in tokens):
+        raise InvalidKeyValue('items', 'Select between 1 and 100 imported files')
+    with _LOCK:
+        root = valid_root(Settings().sv.pack_inbox_folder)
+        cursor = get_db()
+        rows = []
+        for token in dict.fromkeys(tokens):
+            row = cursor.execute("SELECT * FROM pack_inbox WHERE token=? AND root=? AND status='imported'", (token, str(root))).fetchone()
+            if row is None or _managed_source(Path(row['root']) / row['relative_path']) is None:
+                raise InvalidKeyValue('items', 'Only imported files from completed Kapowarr pack downloads can be cleaned')
+            rows.append(dict(row))
+        for row in rows:
+            _cleanup_imported(row)
+        return listing()
+
+
 def listing():
     folder = Settings().sv.pack_inbox_folder
     rows = get_db().execute('SELECT token,relative_path,status,message,destination FROM pack_inbox WHERE root=? ORDER BY relative_path', (folder,)).fetchalldict()
     for row in rows:
+        source = Path(folder) / row['relative_path']
+        row['can_cleanup'] = row['status'] == 'imported' and _managed_source(source) is not None and source.is_file()
         if row['status'] == 'review' and row['message'] == 'No library match':
             data = extract_filename_data(Path(row['relative_path']).name,
                                          assume_volume_number=False, fix_year=True)
@@ -226,6 +294,8 @@ def import_selected(tokens):
                     cursor.execute('UPDATE pack_inbox SET destination=? WHERE token=?', (str(destination), row['token']))
                 cursor.execute("UPDATE pack_inbox SET status='imported',message='Copied and verified; original retained' WHERE token=?", (row['token'],))
                 cursor.connection.commit()
+                imported = cursor.execute('SELECT * FROM pack_inbox WHERE token=?', (row['token'],)).fetchone()
+                _cleanup_imported(dict(imported))
             except Exception as error:
                 cursor.connection.rollback()
                 cursor.execute('UPDATE pack_inbox SET status=?,message=? WHERE token=?', ('held' if copying else 'review', str(error), row['token']))

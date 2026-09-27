@@ -55,7 +55,8 @@ folder for larger inboxes.
   remain selectable. Monitoring is not a filter for this explicit manual import.
 - Copies go to a unique `Pack-Inbox-<token>` subfolder inside the matched volume.
   Exact issue bindings use Kapowarr's existing forced-match flag, so later rescans
-  preserve the reviewed association. Originals are never renamed, moved or deleted.
+  preserve the reviewed association. External inbox originals are never renamed, moved or deleted. Extracted sources
+  from Kapowarr-managed packs are cleaned after verified import (see below).
 - Inbox and library folders must not overlap. Symlinked content is not imported.
   Changed files and changed/now-owned library matches require a fresh review.
 - Download-search preferences do not filter this manual inbox; the files are
@@ -95,9 +96,9 @@ UI and desktop/mobile layout checks pass. Live Synology pack import is pending.
 ## Naming imported copies
 
 Settings → Media Management → Rename Downloaded Files also applies to Pack Inbox.
-After checksum verification and issue binding, only the new library copy is renamed
-using the existing naming formats. The journal records its final path. The source
-is untouched. Disable the setting to preserve incoming names. Rename failures stay
+After checksum verification and issue binding, the new library copy is renamed
+using the existing naming formats. The journal records its final path. External
+inbox sources are untouched; managed-pack sources can then be cleaned. Disable the setting to preserve incoming names. Rename failures stay
 held for review and do not replay the copy automatically.
 
 Use Volumes → Duplicate Files to review indexed library duplicates. This does not
@@ -155,3 +156,18 @@ matching; Refresh Results alone only reads the previous scan.
 A missing match can also mean missing issue metadata or a title/year mismatch in
 an existing series. Search shows already-added series; refresh that volume's
 metadata instead of adding a duplicate. No series is added automatically.
+
+## Clean imported managed-pack files
+
+After a successful import from a Kapowarr-downloaded pack, its individual extracted
+source file is automatically deleted. Cleanup rechecks the source size/timestamp,
+current library path and issue bindings, and SHA-256 equality with the final library
+copy after naming. Changed/missing copies or filesystem errors retain the source
+and show a cleanup-review message while keeping the import marked imported.
+
+Previously imported rows with retained managed sources offer **Delete Imported
+Source**. It uses the same verification, so you can clean the files imported before
+this update without importing them again. Scan the original pack folder to see its
+saved imported rows. Cleanup is per file; unmatched comics, the outer archive and
+folders are preserved. External/manual inbox folders remain copy-only to protect
+read-only mounts and torrent-managed originals.

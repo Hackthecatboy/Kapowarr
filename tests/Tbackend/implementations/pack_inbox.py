@@ -211,6 +211,56 @@ class PackInbox(unittest.TestCase):
         self.assertEqual(row['status'], 'matched')
         self.assertNotIn('series_query', row)
 
+    def managed_pack(self):
+        source = self.comic('Managed/ready/Alpha Comics 001 (2026).cbz')
+        folder = self.inbox / 'Managed'
+        archive = folder / 'payload.archive'
+        archive.write_bytes(b'retained pack archive')
+        self.db.execute("INSERT INTO pack_downloads VALUES('managed','https://getcomics.org/pack/','Pack',?,?, 'managed','ready','',0,0)",
+                        (str(self.inbox), str(folder)))
+        self.db.commit()
+        return source, archive
+
+    def test_managed_pack_import_deletes_only_verified_source(self):
+        source, archive = self.managed_pack()
+        unmatched = self.comic('Managed/ready/Unknown 001 (2026).cbz')
+        token = next(row['token'] for row in self.scan() if row['status'] == 'matched')
+        result = pack_inbox.import_selected([token])
+        imported = next(row for row in result['items'] if row['status'] == 'imported')
+        self.assertFalse(source.exists())
+        self.assertTrue(archive.exists() and unmatched.exists())
+        self.assertTrue(Path(imported['destination']).is_file())
+        self.assertIn('source deleted', imported['message'])
+        self.assertFalse(imported['can_cleanup'])
+        self.assertEqual(next(row for row in self.scan() if row['token'] == token)['status'], 'imported')
+
+    def test_existing_import_cleanup_refuses_changed_copy_then_removes_source(self):
+        source, archive = self.managed_pack()
+        original = source.read_bytes()
+        token = self.scan()[0]['token']
+        with patch.object(pack_inbox, '_cleanup_imported'):
+            row = pack_inbox.import_selected([token])['items'][0]
+        self.assertTrue(row['can_cleanup'])
+        destination = Path(row['destination'])
+        destination.write_bytes(b'changed')
+        row = pack_inbox.cleanup_selected([token])['items'][0]
+        self.assertTrue(source.exists())
+        self.assertEqual(row['status'], 'imported')
+        self.assertIn('differs', row['message'])
+        destination.write_bytes(original)
+        pack_inbox.cleanup_selected([token])
+        self.assertFalse(source.exists())
+        self.assertTrue(archive.exists())
+
+    def test_external_inbox_import_is_never_cleaned(self):
+        source = self.comic('Alpha Comics 001 (2026).cbz')
+        token = self.scan()[0]['token']
+        row = pack_inbox.import_selected([token])['items'][0]
+        self.assertFalse(row['can_cleanup'])
+        with self.assertRaises(InvalidKeyValue):
+            pack_inbox.cleanup_selected([token])
+        self.assertTrue(source.exists())
+
     def test_api_authentication(self):
         app=Flask(__name__); app.register_blueprint(api,url_prefix='/api')
         client=app.test_client()
