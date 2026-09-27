@@ -53,7 +53,10 @@ to requests. Indexer requests do not go through FlareSolverr.
 Both protocols can download after configuring a matching client and shared
 folders. Search metadata is retained for enqueue matching; run a fresh search
 if an older result is unavailable. Enabled indexers also participate in
-automatic searches and RSS discovery.
+automatic searches and RSS discovery. RSS sync defaults to once an hour, at
+minute 0. Upgrading changes the old half-hour default to hourly and preserves
+custom schedules. GetComics weekly pack subscriptions use their own selected-day
+schedule; see [Pack Inbox subscriptions](pack-inbox.md#subscribe-to-future-packs).
 
 Selected Prowlarr import and manual refresh are now available; see
 [the Prowlarr guide](prowlarr-sync.md). Native registration in its Applications

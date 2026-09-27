@@ -7,7 +7,10 @@ packs downloaded outside Kapowarr. It does not require a tracked downloader job.
 Completed external qBittorrent torrents in the **kapowarr** category can also be
 opened here with **Activity → Queue → Review Files**. Single-file torrents scan
 only their selected file, even when other downloads share the same folder.
-These are external sources: importing copies never deletes their originals.
+Wait for Review Files to finish scanning before the inbox opens with the new
+folder and results. The scan reads the mapped torrent location directly; it does
+not first copy the pack into another inbox folder. These are external sources:
+importing copies never deletes their originals.
 See [category discovery](torrent-downloads.md#discover-torrents-added-directly-in-qbittorrent).
 
 ## First Synology test
@@ -103,8 +106,9 @@ The database journals copy progress before writing. If a copy or database update
 fails, or the application stops mid-import, the entry stays held/importing. Its
 source and any partial library copy are retained. Inspect the displayed destination;
 there is no automatic retry, rollback, or review-override button for those entries.
-Unmatched filenames can be corrected in a separate inbox copy, or their series
-added through the normal library UI, followed by another scan.
+For unmatched files, use **Find / Add Series** to link or add a series and refresh
+the saved review automatically. If you instead correct a filename in a separate
+inbox copy or add a series elsewhere in the library UI, scan again.
 
 Imported and held paths do not automatically reset even if their contents change.
 The journal prevents replay for the same source path, including when narrowing the
@@ -123,9 +127,10 @@ owned/ambiguous/unmatched files, stale previews, changed sources, symlinks, fold
 boundaries, held/interrupted copies, repeat scans, authentication and migration.
 Local UI and desktop/mobile layout checks have passed. The user has exercised
 managed GetComics pack download, extraction, selected import and cleanup on the
-isolated Synology deployment. Unattended scheduling and the latest matching and
-structure changes still need live validation. Repeatable DOM interaction checks
-are documented in [frontend tests](../tests/frontend/README.md).
+isolated Synology deployment, along with external torrent review and the series
+picker. Unattended scheduling, standalone-book matching, and the latest concurrency
+and polling fixes still need live validation; see the [roadmap](../ROADMAP.md).
+Repeatable DOM interaction checks are documented in [frontend tests](../tests/frontend/README.md).
 
 ## Naming imported copies
 
@@ -177,17 +182,24 @@ checks happen before extraction, and existing extraction folders are never reuse
 
 Fixture tests cover article validation, authenticated endpoints, persisted job
 submission, duplicate suppression, interrupted jobs, ZIP extraction, unsafe paths,
-truncated downloads, source preservation and exclusion of unfinished scans. Live
-GetComics hosting behavior still needs verification with a small test pack.
+truncated downloads, source preservation and exclusion of unfinished scans. The
+manual GetComics flow has been exercised on Synology; this does not establish
+live support for every provider or payload format.
 
 ## Add a missing series from review
 
 **Find / Add Series** opens the normal Add Volume search in a floating window,
 with the filename's series title filled in. Pick an existing library series or
 add a new one using the normal root-folder and monitoring controls. The selection
-links only the file that opened the window. A clear issue number is selected
+links the file that opened the window and refreshes the list automatically.
+Related numbered files can inherit the series under the rules in
+[Matching and preservation](#matching-and-preservation). A clear issue number is selected
 automatically; otherwise choose the issue(s) contained in the file. Existing owned
 issues cannot be overwritten. Linking does not import files or change series aliases.
+
+If adding a volume fails, the dialog becomes usable again and shows the error.
+For a database-busy or interrupted request, check whether the volume appeared in
+the library before retrying. Linking or adding a volume does not start an import.
 
 Per-file links are saved across rescans and restarts and rechecked before import.
 Changed source files lose their old manual association and require another review.
@@ -222,7 +234,8 @@ comics. Library copies and imported issue bindings are untouched. Cancel changes
 nothing. Changed files invalidate the preview; active downloads, in-progress import
 records, symlinks and nested pack jobs block cleanup. A partial cleanup error keeps
 the job held; inspect remaining files and preview again. Finished jobs stay in the
-history to prevent the same link being downloaded again.
+history to prevent the same link being downloaded again. Status refreshes
+automatically; review and finish controls stay disabled while cleanup is running.
 
 ## Find older packs
 
@@ -243,6 +256,10 @@ Older packs are never downloaded in bulk just because they appear in search.
    timezone. Existing subscriptions default to Sunday; change their weekday with
    **Save Day**. **Check Subscriptions Now** checks enabled subscriptions immediately,
    regardless of their scheduled weekday.
+
+Weekday edits stay visible during automatic refreshes, including when another
+subscription is saved. Click **Save Day** to persist each change. If a save fails,
+the chosen day remains in the control for retry; saving has not been confirmed.
 
 The scheduler checks whether subscriptions are due hourly at minute 15, but only
 contacts GetComics once on the selected day. The attempt is saved across restarts,
@@ -273,10 +290,12 @@ search results scroll within their own panel; repeated discovered articles appea
 once, newest first. Each downloaded pack can be collapsed while working on another.
 Use **Scan Pack for Review** to jump directly to that pack's files.
 
-File review defaults to **Needs attention**, hiding imported and discarded rows.
-Choose **Matched**, **Review / Held**, **Imported**, or **All files**, and use the
-filename search to narrow the list. **Select Visible Matches** selects up to 100
-currently visible matches. Hiding a selected row clears its selection so imports
+File review defaults to **Needs attention**, hiding owned, imported and discarded
+rows while keeping missing-issue matches available to import. **Review / Held**
+shows only review, held and in-progress import entries; it also hides owned files.
+Choose **Matched**, **Imported**, or **All files** for the other views; owned files
+remain visible under **All files**. Use the filename search to narrow the list.
+**Select Visible Matches** selects up to 100 currently visible matches. Hiding a selected row clears its selection so imports
 only include visible choices. Full source paths are available on filename hover;
 expand **Library copy** to see an imported file's destination. Import instructions
 are collected under **Import help** instead of repeated on every row.

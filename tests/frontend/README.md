@@ -15,9 +15,10 @@ and JavaScript. API responses, confirmation dialogs and polling timers are
 stubbed; tests do not start Kapowarr, contact providers, or alter library files.
 Unexpected API routes fail the test.
 
-Coverage includes visible-file selection and import requests, collapsed finished
-jobs and release history, cleanup confirmation tokens, search pagination,
-subscription controls, supported download choices, and review-only torrent discovery in Activity. Add
+Coverage includes visible-file selection, sequential imports and interrupted
+requests, series selection, collapsed history, cleanup confirmation tokens, search
+pagination, subscription weekday drafts and failed saves, stale polling responses,
+supported download choices, and review-only torrent discovery in Activity. Add
 scenarios to `pack-inbox.test.cjs` or `queue-discovery.test.cjs` when changing
 these interactions.
 
