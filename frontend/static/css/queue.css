@@ -86,9 +86,19 @@ th, td {
     display: block;
 }
 
-#discovery-status:not(:empty) {
+#discovery-status {
+    flex: 0 0 auto;
     position: relative;
     z-index: 1;
     padding: .5rem 1rem;
     color: var(--text-color);
+}
+
+#discovery-status:empty {
+    display: none;
+}
+
+/* Icon buttons have an explicit display style in general.css. */
+#queue button[hidden] {
+    display: none !important;
 }
