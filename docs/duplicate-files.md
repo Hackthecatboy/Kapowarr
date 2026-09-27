@@ -60,8 +60,7 @@ and disables its Delete checkbox.
 Kapowarr rehashes the retained and selected files, checks their paths and current
 issue bindings, and refuses stale/changed files, symlinks, cross-volume removal,
 or loss of issue/metadata coverage. A volume with queued downloads or an ongoing
-Pack Inbox import must finish or resolve those entries first. Differing or
-unverified same-issue files remain review-only. At least the chosen keeper remains;
+Pack Inbox import must finish or resolve those entries first. Different or unverified same-issue files require the manual edition review below. At least the chosen keeper remains;
 no client download folders are targeted. Deleting a hard link removes that path,
 not the retained path. Multiple linked copies may require a fresh scan after their
 filesystem metadata changes.
@@ -76,3 +75,22 @@ only the selected path and its database binding disappear, the keeper still open
 and its issue remains linked. Then modify a copy after scanning and confirm deletion
 is rejected until a new scan. No existing library files are deleted during development
 or automated testing; tests use temporary fixtures.
+
+## Choose between different editions
+
+Same-issue groups (such as a CBR and a CBZ of the same issue) also offer Keep and
+Delete controls. No keeper or deletion is selected initially. Inspect your files,
+choose **Keep**, select the unwanted editions, then **Delete Selected Editions**.
+The confirmation explicitly warns that contents have not been verified identical;
+format and file size do not establish page quality, completeness or extras.
+
+This is a manual edition decision, not page-level duplicate detection. Unhashed
+files are checked against their scan-time filesystem identity, size and timestamps;
+previously hashed files are also rehashed. Changed paths, issue bindings, active
+imports/downloads and additional issue coverage block deletion. Only selected
+library files are deleted; external download originals remain untouched.
+
+Validate with two expendable files of different contents/extensions linked to the
+same issue: ensure no keeper is preselected, cancellation changes nothing, and
+confirmation removes only the selected edition. A file covering an additional
+issue must be refused unless the retained file covers that issue too.

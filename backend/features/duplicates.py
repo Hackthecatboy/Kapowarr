@@ -142,7 +142,10 @@ def _scan(volume_id):
         if len(hashes) == 1 and None not in hashes:
             continue  # Already covered by exact duplicates.
         row = entries[0][0]
-        issue_groups.append(dict(volume_id=row['volume_id'], title=row['title'], issue_number=row['issue_number'],
+        token = uuid4().hex
+        _PREVIEWS[token] = (monotonic(), {item['id']: dict(item, review_issue_id=row['id'])
+                                        for _, item in entries})
+        issue_groups.append(dict(token=token, volume_id=row['volume_id'], title=row['title'], issue_number=row['issue_number'],
                                  files=[item for _, item in entries]))
     for item in files.values():
         del item['signature']
@@ -150,8 +153,8 @@ def _scan(volume_id):
                 scanned_files=len(files), hashed_bytes=hashed_bytes, limited=limited)
 
 
-def delete_selected(token, keep_id, delete_ids, confirmed=False):
-    """Keep an explicit verified copy; refuse stale previews and lost issue coverage."""
+def delete_selected(token, keep_id, delete_ids, confirmed=False, reviewed_different=False):
+    """Keep a verified copy or manually chosen edition; protect current issue coverage."""
     if (confirmed is not True or type(keep_id) is not int or not isinstance(token, str)
             or not isinstance(delete_ids, list) or not 1 <= len(delete_ids) <= 100
             or any(type(i) is not int for i in delete_ids) or keep_id in delete_ids):
@@ -163,8 +166,11 @@ def delete_selected(token, keep_id, delete_ids, confirmed=False):
         files = preview[1]
         ids = list(dict.fromkeys(delete_ids))
         if keep_id not in files or any(i not in files for i in ids):
-            raise InvalidKeyValue('selection', 'Files are not part of this verified group; scan again')
+            raise InvalidKeyValue('selection', 'Files are not part of this review group; scan again')
         selected = [files[keep_id]] + [files[i] for i in ids]
+        manual_review = 'review_issue_id' in files[keep_id]
+        if manual_review and reviewed_different is not True:
+            raise InvalidKeyValue('selection', 'Confirm review of different or unverified editions')
         if len({i['volume_id'] for i in selected}) != 1:
             raise InvalidKeyValue('selection', 'Keep a copy in each volume; cross-volume deletion is not supported')
         if sum(i['size'] for i in selected) > MAX_BYTES:
@@ -174,6 +180,10 @@ def delete_selected(token, keep_id, delete_ids, confirmed=False):
         try:
             for item in selected:
                 _validate_delete_file(cursor, item)
+                if manual_review and not item['sha256']:
+                    # Manual edition choice: unchanged filesystem identity is checked,
+                    # but no claim is made that archive contents are identical.
+                    continue
                 descriptor = os.open(item['filepath'], os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
                 with os.fdopen(descriptor, 'rb') as handle:
                     if signature(os.fstat(handle.fileno())) != item['signature']:
@@ -223,6 +233,10 @@ def _validate_delete_file(cursor, item):
         (item['volume_id'], item['id'])).fetchone()
     if row is None or row['filepath'] != item['filepath']:
         raise ValueError('Library record changed; scan again')
+    if 'review_issue_id' in item and not cursor.execute(
+            'SELECT 1 FROM issues_files WHERE file_id=? AND issue_id=?',
+            (item['id'], item['review_issue_id'])).fetchone():
+        raise ValueError('Issue binding changed; scan again')
     path = Path(row['filepath'])
     if any(p.is_symlink() for p in (path, *path.parents)):
         raise ValueError('Symlink paths cannot be deleted')

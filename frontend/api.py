@@ -813,7 +813,8 @@ def api_duplicates_delete():
     if not isinstance(data, dict):
         raise InvalidKeyValue('body', 'Expected an object')
     return return_api(delete_duplicates(data.get('token'), data.get('keep_id'),
-                                       data.get('delete_ids'), data.get('confirm')))
+                                       data.get('delete_ids'), data.get('confirm'),
+                                       data.get('reviewed_different')))
 
 
 @api.route('/pack-inbox', methods=['GET'])

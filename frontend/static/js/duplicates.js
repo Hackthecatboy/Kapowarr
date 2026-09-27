@@ -46,16 +46,24 @@ function showDuplicateReport(report) {
     }
     const exact = report.exact.map(group => ({...group, files: [...group.files].sort(compareFiles)}))
         .sort((a, b) => compareFiles(a.files[0], b.files[0]));
-    for (const [index, group] of exact.entries()) {
+    const sameIssue = [...report.same_issue].sort((a, b) =>
+        collator.compare(a.title, b.title) || a.volume_id - b.volume_id
+        || collator.compare(String(a.issue_number), String(b.issue_number)))
+        .map(group => ({...group, manualReview: true, files: [...group.files].sort(compareFiles)}));
+    for (const [index, group] of [...exact, ...sameIssue].entries()) {
         const {box, list, sharedFolder} = section(
-            `${parts(group.files[0]).base} — ${group.files.length} identical copies`, group.files,
-            group.same_physical_file
+            group.manualReview
+                ? `${group.title} #${group.issue_number} — ${group.files.length} files to review`
+                : `${parts(group.files[0]).base} — ${group.files.length} identical copies`, group.files,
+            group.manualReview
+                ? 'Different or unverified editions. Review the files and choose which to keep; format and size do not prove quality or identical pages.'
+                : group.same_physical_file
                 ? 'SHA-256 verified. These paths refer to the same physical file (hard links).'
                 : 'Identical file contents (SHA-256 verified).');
         const size = document.createElement('p');
         size.textContent = `${group.files[0].size.toLocaleString()} bytes per copy`;
-        box.append(size);
-        let keepId = group.files[0].id;
+        if (!group.manualReview) box.append(size);
+        let keepId = group.manualReview ? null : group.files[0].id;
         const checks = [];
         for (const file of group.files) {
             const row = document.createElement('div');
@@ -79,32 +87,34 @@ function showDuplicateReport(report) {
             const name = document.createElement('span');
             name.className = 'duplicate-filename';
             name.textContent = sharedFolder ? parts(file).name : file.filepath;
+            if (group.manualReview) name.textContent += ` (${(file.size / 1024 / 1024).toFixed(2)} MiB · ${file.size.toLocaleString()} bytes)`;
             name.title = file.filepath;
             row.append(name);
             list.append(row);
         }
         if (!group.token) continue;
         const remove = document.createElement('button');
-        remove.type = 'button'; remove.textContent = 'Delete Selected Duplicates';
+        remove.type = 'button'; remove.textContent = group.manualReview ? 'Delete Selected Editions' : 'Delete Selected Duplicates';
         const status = document.createElement('p'); status.setAttribute('role','status');
         function updateSelection() {
             for (const check of checks) {
                 check.disabled = Number(check.value) === keepId;
                 if (check.disabled) check.checked = false;
             }
-            remove.disabled = !checks.some(check => check.checked);
+            remove.disabled = keepId === null || !checks.some(check => check.checked);
         }
         checks.forEach(check => check.onchange = updateSelection);
         remove.onclick = async () => {
             const ids = checks.filter(check => check.checked).map(check => Number(check.value));
             const retained = group.files.find(file => file.id === keepId);
             const paths = group.files.filter(file => ids.includes(file.id)).map(file => file.filepath);
-            if (!ids.length || !confirm(`Permanently delete these library copies?\n\n${paths.join('\n')}\n\nKEEP: ${retained.filepath}\n\nFiles will be checked again before deletion.`)) return;
+            const warning = group.manualReview ? 'These files are NOT verified identical. Different pages, extras or quality may be lost. You are choosing which edition to retain.\n\n' : '';
+            if (!retained || !ids.length || !confirm(`${warning}Permanently delete these library copies?\n\n${paths.join('\n')}\n\nKEEP: ${retained.filepath}\n\nFiles will be checked again before deletion.`)) return;
             [...box.querySelectorAll('input,select,button')].forEach(control => control.disabled = true);
             status.textContent = 'Verifying files before deletion…';
             try {
                 const response = await sendAPI('POST','/duplicates/delete',duplicateApiKey,{}, {
-                    token:group.token,keep_id:retained.id,delete_ids:ids,confirm:true
+                    token:group.token,keep_id:retained.id,delete_ids:ids,confirm:true,reviewed_different:!!group.manualReview
                 });
                 const result = (await response.json()).result;
                 status.textContent = `Deleted ${result.deleted.length} file(s). Kept: ${result.kept}. ${result.errors.map(error => error.reason).join('; ')} Scan again for current results.`;
@@ -115,20 +125,6 @@ function showDuplicateReport(report) {
             }
         };
         box.append(remove,status); updateSelection();
-    }
-    const sameIssue = [...report.same_issue].sort((a, b) =>
-        collator.compare(a.title, b.title) || a.volume_id - b.volume_id
-        || collator.compare(String(a.issue_number), String(b.issue_number)));
-    for (const group of sameIssue) {
-        const files = [...group.files].sort(compareFiles);
-        const {list, sharedFolder} = section(
-            `${group.title} #${group.issue_number} — ${files.length} files to review`, files,
-            'Different or unverified files — review editions before removing anything.');
-        for (const file of files) {
-            const row = document.createElement('p');
-            row.textContent = `${sharedFolder ? parts(file).name : file.filepath} (${file.size} bytes)`;
-            list.append(row);
-        }
     }
     if (report.errors.length) {
         const warning = document.createElement('section');

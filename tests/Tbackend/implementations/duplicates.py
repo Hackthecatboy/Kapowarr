@@ -136,6 +136,67 @@ class DuplicateReview(unittest.TestCase):
         self.assertEqual(self.db.execute('SELECT count(*) FROM files').fetchone()[0],2)
         self.assertTrue(a.exists() and b.exists())
 
+    def edition_pair(self):
+        a = self.file(1, 'Example 001.cbr', b'rar-edition')
+        b = self.file(2, 'Example 001.cbz', b'zip-edition-with-extras')
+        self.db.commit()
+        token = duplicates.scan()['same_issue'][0]['token']
+        return a, b, token
+
+    def test_manual_editions_require_explicit_review_and_preserve_keeper(self):
+        from backend.base.custom_exceptions import InvalidKeyValue
+        a, b, token = self.edition_pair()
+        for reviewed in (False, None, 'true', 1):
+            with self.assertRaises(InvalidKeyValue):
+                duplicates.delete_selected(token, 2, [1], True, reviewed)
+        self.assertTrue(a.exists() and b.exists())
+        result = duplicates.delete_selected(token, 2, [1], True, True)
+        self.assertEqual(result['deleted'], [str(a)])
+        self.assertFalse(a.exists())
+        self.assertEqual(b.read_bytes(), b'zip-edition-with-extras')
+        self.assertEqual([tuple(r) for r in self.db.execute(
+            'SELECT file_id,issue_id FROM issues_files')], [(2, 1)])
+
+    def test_manual_editions_reject_changed_keeper_and_changed_issue_binding(self):
+        from backend.base.custom_exceptions import InvalidKeyValue
+        a, b, token = self.edition_pair()
+        a.write_bytes(b'changed')
+        with self.assertRaises(InvalidKeyValue):
+            duplicates.delete_selected(token, 1, [2], True, True)
+        token = duplicates.scan()['same_issue'][0]['token']
+        self.db.execute('DELETE FROM issues_files WHERE file_id=1')
+        self.db.commit()
+        with self.assertRaises(InvalidKeyValue):
+            duplicates.delete_selected(token, 1, [2], True, True)
+        self.assertTrue(a.exists() and b.exists())
+
+    def test_manual_editions_protect_additional_issue_coverage(self):
+        from backend.base.custom_exceptions import InvalidKeyValue
+        a, b, token = self.edition_pair()
+        self.db.execute("INSERT INTO issues(id,volume_id,comicvine_id,issue_number,calculated_issue_number) VALUES(2,1,2,'2',2)")
+        self.db.execute('INSERT INTO issues_files VALUES(2,2,0)')
+        self.db.commit()
+        with self.assertRaises(InvalidKeyValue):
+            duplicates.delete_selected(token, 1, [2], True, True)
+        self.assertTrue(a.exists() and b.exists())
+
+    def test_manual_edition_endpoint_requires_review_confirmation(self):
+        from flask import Flask
+        from frontend.api import api
+        from types import SimpleNamespace
+        a, b, token = self.edition_pair()
+        app = Flask(__name__)
+        app.register_blueprint(api, url_prefix='/api')
+        with patch('frontend.api.Settings', return_value=SimpleNamespace(sv=SimpleNamespace(api_key='test'))):
+            client = app.test_client()
+            payload = dict(token=token, keep_id=1, delete_ids=[2], confirm=True)
+            self.assertEqual(client.post('/api/duplicates/delete?api_key=test', json=payload).status_code, 400)
+            payload['reviewed_different'] = True
+            response = client.post('/api/duplicates/delete?api_key=test', json=payload)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json['result']['deleted'], [str(b)])
+        self.assertTrue(a.exists())
+
     def test_scan_endpoint_requires_auth(self):
         from flask import Flask
         from frontend.api import api
