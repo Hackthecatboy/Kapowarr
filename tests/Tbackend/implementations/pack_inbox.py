@@ -79,6 +79,32 @@ class PackInbox(unittest.TestCase):
         self.assertTrue(source.exists())
         self.assertEqual(self.db.execute('SELECT issue_id FROM issues_files').fetchone()[0], 1)
 
+    def test_owned_manual_match_is_saved_but_cannot_be_imported(self):
+        source = self.comic('Different Name #001 (2015).cbz')
+        row = self.scan()[0]
+        self.db.execute("INSERT INTO files(id,filepath,size) VALUES(1,'existing.cbz',1)")
+        self.db.execute('INSERT INTO issues_files(file_id,issue_id) VALUES(1,1)')
+        linked = pack_inbox.set_match(row['token'], 1, [1])['items'][0]
+        self.assertEqual(linked['status'], 'owned')
+        self.assertIn('Already owned', linked['message'])
+        rescanned = self.scan()[0]
+        self.assertEqual(rescanned['status'], 'owned')
+        with self.assertRaises(InvalidKeyValue):
+            pack_inbox.import_selected([rescanned['token']])
+        self.assertTrue(source.exists())
+        self.assertEqual(self.db.execute('SELECT count(*) FROM files').fetchone()[0], 1)
+
+    def test_partially_owned_manual_match_stays_excluded_from_import(self):
+        self.comic('Different Name #001-002.cbz')
+        row = self.scan()[0]
+        self.db.execute("INSERT INTO issues(id,volume_id,comicvine_id,issue_number,calculated_issue_number) VALUES(3,1,3,'2',2)")
+        self.db.execute("INSERT INTO files(id,filepath,size) VALUES(1,'existing.cbz',1)")
+        self.db.execute('INSERT INTO issues_files(file_id,issue_id) VALUES(1,1)')
+        linked = pack_inbox.set_match(row['token'], 1, [1,3])['items'][0]
+        self.assertEqual(linked['status'], 'owned')
+        with self.assertRaises(InvalidKeyValue):
+            pack_inbox.import_selected([linked['token']])
+
     def test_manual_match_rejects_wrong_series_issue_and_changed_source(self):
         source = self.comic('Different Name #001 (2016).cbz')
         row = self.scan()[0]

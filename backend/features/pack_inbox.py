@@ -173,9 +173,11 @@ def set_match(token: object, volume_id: object, issue_ids: object) -> InboxListi
             raise InvalidKeyValue('match', 'Choose the issues contained in this file')
         ids = sorted(set(issue_ids))
         volume, ids, reason = manual_identity(volume_id, ids)
-        if reason or volume is None:
+        if volume is None:
             raise InvalidKeyValue('match', reason)
         PackInboxDB.set_manual_match(token, volume_id, json.dumps(ids), f"Selected: {volume['title']} — {len(ids)} issue(s)")
+        if reason:
+            PackInboxDB.set_state('owned', reason, token)
         get_db().connection.commit()
         _refresh_review_matches(token, volume_id, ids)
         return listing()

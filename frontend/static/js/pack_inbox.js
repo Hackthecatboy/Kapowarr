@@ -91,7 +91,9 @@ usingApiKey().then(apiKey => {
         if (picker !== selection) return;
         render(result);
         seriesDialog.close();
-        status.textContent = 'Series linked. Inbox matches updated; select files when ready to import.';
+        status.textContent = result.items.find(item => item.token === selection.token)?.status === 'owned'
+            ? 'Series linked. Already-owned issues recorded; this file is excluded from import.'
+            : 'Series linked. Inbox matches updated; select files when ready to import.';
     }
     window.addEventListener('message', async event => {
         if (!picker || matching || event.origin !== window.location.origin || event.source !== seriesFrame.contentWindow
@@ -109,13 +111,12 @@ usingApiKey().then(apiKey => {
                 const option = document.createElement('option');
                 option.value = issue.id;
                 option.textContent = `#${issue.number}${issue.owned ? ' — already owned' : ''}`;
-                option.disabled = issue.owned;
-                option.selected = options.selected.includes(issue.id) && !issue.owned;
+                option.selected = options.selected.includes(issue.id);
                 issueSelection.appendChild(option);
             }
             issueForm.classList.remove('hidden');
             seriesMessage.textContent = `Selected series: ${options.title}`;
-            if (options.selected.length && options.selected.every(id => options.issues.some(i => i.id === id && !i.owned)))
+            if (options.selected.length && options.selected.every(id => options.issues.some(i => i.id === id)))
                 await saveMatch(selection, options.selected);
         } catch (error) { if (picker === selection) await matchError(error); }
         finally { if (picker === selection) matching = false; }

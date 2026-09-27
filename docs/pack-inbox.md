@@ -52,7 +52,9 @@ folder for larger inboxes.
 
 Ambiguous matches can be resolved with **Find / Add Series**. Choose the correct
 library series and, when requested, its issue. The selection is saved for that
-file and survives rescans. After linking, unchanged unresolved files already
+file and survives rescans. Already-owned issues can also be selected: the file
+is marked owned and excluded from import, including when only part of its
+selected issue range is owned. Its source is left untouched. After linking, unchanged unresolved files already
 in this review are rechecked automatically for clear library matches. Explicit
 choices and held copies are preserved; other folders are not scanned.
 For numbered files with the same parsed title, year and edition in the same

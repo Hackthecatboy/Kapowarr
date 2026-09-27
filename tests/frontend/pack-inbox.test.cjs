@@ -198,7 +198,8 @@ test('ambiguous issue selection waits for explicit choice without importing', as
     await tick();
     assert.equal(state.calls.length, 1);
     assert.equal(el('#inbox-series-issues').classList.contains('hidden'), false);
-    assert.equal(el('#inbox-issue-selection').options[1].disabled, true);
+    assert.equal(el('#inbox-issue-selection').options[1].disabled, false);
+    assert.match(el('#inbox-issue-selection').options[1].textContent, /already owned/);
 });
 
 test('100 selected imports run sequentially with one file per request', async t => {
@@ -260,4 +261,25 @@ test('attention and review filters exclude owned entries while all retains them'
     el('#inbox-filter').value = 'all';
     el('#inbox-filter').onchange();
     assert.equal(visible().length, 7);
+});
+
+
+test('picker records an owned issue and hides it from needs attention', async t => {
+    const item = {status: 'review', relative_path: 'Other Title #001.cbz', token: 'owned-file', series_query: 'Other Title'};
+    const {w, el, state} = await page(t, {
+        items: [item],
+        respond: path => {
+            if (path === '/pack-inbox/match-options') return {title: 'Series', selected: [9], issues: [{id: 9, number: 1, owned: true}]};
+            if (path === '/pack-inbox/match') return {folder: '/inbox', items: [{...item, status: 'owned'}]};
+        }
+    });
+    el('.inbox-add-series').click();
+    w.dispatchEvent(new w.MessageEvent('message', {origin: w.location.origin, source: el('#inbox-series-frame').contentWindow, data: {type: 'pack-series-selected', token: item.token, volume_id: 2}}));
+    await tick();
+    assert.deepEqual(state.calls.at(-1).data, {token: item.token, volume_id: 2, issue_ids: [9]});
+    assert.equal(el('#inbox-series-dialog').open, false);
+    assert.equal(el('#inbox-results tr').hidden, true);
+    assert.equal(el('#inbox-results input'), null);
+    assert.match(el('#inbox-status').textContent, /excluded from import/);
+    assert.equal(state.calls.some(call => call.path.endsWith('/import')), false);
 });
