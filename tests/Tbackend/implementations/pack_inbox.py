@@ -201,6 +201,36 @@ class PackInbox(unittest.TestCase):
         row = self.scan()[0]
         self.assertEqual(row['status'], 'matched')
 
+    def test_publication_prefix_excludes_future_series_and_uses_issue_year(self):
+        for title, start, year, number in (
+                ('Wolverine', 1982, 1982, 4),
+                ('Wonder Woman', 1941, 1942, 1),
+                ('Black Panther', 2005, 2006, 18)):
+            with self.subTest(title=title):
+                self.db.execute('UPDATE volumes SET title=?, year=2024 WHERE id=1', (title,))
+                self.db.execute('UPDATE issues SET calculated_issue_number=?, date=? WHERE id=1',
+                                (number, '2024-09-01'))
+                name = f'{year}-09 - {title} #{number:03} (Publisher) [scanner].cbz'
+                data = pack_inbox.filename_data(name)
+                self.assertEqual(data['series'], title)
+                self.assertEqual(data['year'], year)
+                self.assertEqual(data['issue_number'], number)
+                self.assertIsNone(pack_inbox.classify(name)[0])
+                self.db.execute('UPDATE volumes SET year=? WHERE id=1', (start,))
+                self.db.execute('UPDATE issues SET date=? WHERE id=1', (f'{year}-09-01',))
+                self.assertEqual(pack_inbox.classify(name)[1], [1])
+                # A series start year alone cannot establish an issue's date.
+                self.db.execute('UPDATE issues SET date=NULL WHERE id=1')
+                self.assertIsNone(pack_inbox.classify(name)[0])
+
+    def test_publication_prefix_preserves_markers_for_explicit_review(self):
+        for marker in ('reprint', 'partial', 'incomplete'):
+            name = f'2026-01 - Alpha Comics #001-{marker} (Publisher).cbz'
+            self.assertEqual(pack_inbox.filename_data(name)['issue_number'], 1)
+            self.assertIn('explicitly', pack_inbox.classify(name)[2])
+        self.assertEqual(pack_inbox.filename_data(
+            '001 - Alpha Comics #004 (2026).cbz')['issue_number'], 4)
+
     def test_manual_match_migration_preserves_journal(self):
         self.db.execute('ALTER TABLE pack_inbox RENAME TO original_inbox')
         self.db.execute('CREATE TABLE pack_inbox(id INTEGER, token TEXT)')

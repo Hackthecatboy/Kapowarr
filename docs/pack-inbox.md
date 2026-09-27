@@ -306,3 +306,13 @@ remain visible under **All files**. Use the filename search to narrow the list.
 only include visible choices. Full source paths are available on filename hover;
 expand **Library copy** to see an imported file's destination. Import instructions
 are collected under **Import help** instead of repeated on every row.
+
+### Publication dates in collection filenames
+
+A leading `YYYY-MM - Title #issue` is treated as an issue publication date,
+not a collection position or series start year. Pack Inbox removes that prefix
+from the series search and checks the year against the selected issue dates.
+Series starting later are excluded; missing date evidence remains for review.
+Reprint, partial and incomplete markers require an explicit issue selection.
+Use **Save Folder & Scan** to re-evaluate existing automatic matches after updating.
+Explicit manual selections are retained and should be checked separately.

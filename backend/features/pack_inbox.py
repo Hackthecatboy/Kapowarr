@@ -115,8 +115,20 @@ def safe_source(root: Path, relative: str) -> Path:
     return path
 
 
+def publication_prefix(name: str):
+    """Recognize a collection's leading publication month before title parsing."""
+    return re.match(r'^(?P<year>(?:18|19|20|21)\d{2})-(?:0[1-9]|1[0-2])\s+[-–—]\s+', name)
+
+
+def edition_marker(name: str) -> bool:
+    return bool(re.search(r'\b(?:reprint|partial|incomplete)\b', name, re.IGNORECASE))
+
+
 def filename_data(name: str) -> FilenameData:
     """Ignore collection prefixes before explicit issues or empty parsed titles."""
+    publication = publication_prefix(name)
+    if publication:
+        name = name[publication.end():]
     if re.search(r'#\d', name):
         name = re.sub(r'^\d+\s*-\s*', '', name)
     data = extract_filename_data(name, assume_volume_number=False, fix_year=True)
@@ -126,6 +138,8 @@ def filename_data(name: str) -> FilenameData:
         if title != name:
             data = extract_filename_data(
                 title, assume_volume_number=False, fix_year=True)
+    if publication:
+        data['year'] = int(publication['year'])
     return data
 
 
@@ -194,6 +208,9 @@ def classify(name: str) -> Tuple[Optional[Row], List[int], str]:
         a unique missing-issue match. A matched but owned edition retains its
         volume and issue IDs alongside an ownership reason.
     """
+    if edition_marker(name):
+        return None, [], 'Reprint, partial or incomplete edition; choose its issues explicitly'
+    publication = publication_prefix(name)
     data = filename_data(name)
     number = data['issue_number']
     standalone = number is None and data['special_version'] in (
@@ -227,7 +244,9 @@ def classify(name: str) -> Tuple[Optional[Row], List[int], str]:
             issues = PackInboxDB.range_issues(volume['id'], *bounds)
             if not issues or issues[0]['calculated_issue_number'] != bounds[0] or issues[-1]['calculated_issue_number'] != bounds[1]:
                 continue
-        years = {volume['year']} | {
+        if publication and volume['year'] is not None and volume['year'] > data['year']:
+            continue
+        years = (set() if publication else {volume['year']}) | {
             int(i['date'][:4]) for i in issues if i['date'] and i['date'][:4].isdigit()}
         if data['year'] is not None and data['year'] not in years:
             continue
@@ -340,7 +359,8 @@ def _refresh_review_matches(token: str, volume_id: int, selected_ids: List[int])
     # Only carry a series choice across explicitly numbered ordinary issues.
     # A custom issue choice must not establish a numbering rule for siblings.
     propagate = False
-    if selected_data['series'] and isinstance(number, (int, float)) and not selected_data['special_version']:
+    if (selected_data['series'] and isinstance(number, (int, float))
+            and not selected_data['special_version'] and not edition_marker(selected_path.name)):
         numbered = PackInboxDB.range_issues(volume_id, number, number)
         propagate = len(numbered) == 1 and [numbered[0]['id']] == selected_ids
     updates: List[ScanUpdate] = []
@@ -359,6 +379,8 @@ def _refresh_review_matches(token: str, volume_id: int, selected_ids: List[int])
                     or str(stat.st_mtime_ns) != row['mtime']):
                 continue
             data = filename_data(source.name)
+            if edition_marker(source.name):
+                continue
             related = (propagate
                        and Path(row['relative_path']).parent == selected_path.parent
                        and all(data[key] == selected_data[key] for key in (
@@ -371,6 +393,10 @@ def _refresh_review_matches(token: str, volume_id: int, selected_ids: List[int])
                 if len(issues) != 1:
                     continue
                 volume, ids, reason = manual_identity(volume_id, [issues[0]['id']])
+                if publication_prefix(source.name) and (
+                        volume is None or (volume['year'] is not None and volume['year'] > data['year'])
+                        or not issues[0]['date'] or issues[0]['date'][:4] != str(data['year'])):
+                    continue
             else:
                 volume, ids, reason = classify(source.name)
             if volume is None:
