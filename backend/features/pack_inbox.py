@@ -164,7 +164,7 @@ def match_options(token: object, volume_id: object) -> Dict[str, Any]:
 
 
 def set_match(token: object, volume_id: object, issue_ids: object) -> InboxListing:
-    """Save a per-file selection without importing or changing series aliases."""
+    """Save a choice and refresh related files without importing or adding aliases."""
     with inbox_operation():
         match_options(token, volume_id)
         token, volume_id = cast(str, token), cast(int, volume_id)
@@ -177,7 +177,7 @@ def set_match(token: object, volume_id: object, issue_ids: object) -> InboxListi
             raise InvalidKeyValue('match', reason)
         PackInboxDB.set_manual_match(token, volume_id, json.dumps(ids), f"Selected: {volume['title']} — {len(ids)} issue(s)")
         get_db().connection.commit()
-        _refresh_review_matches()
+        _refresh_review_matches(token, volume_id, ids)
         return listing()
 
 
@@ -321,13 +321,23 @@ def cleanup_selected(tokens: object) -> InboxListing:
         return listing()
 
 
-def _refresh_review_matches() -> None:
+def _refresh_review_matches(token: str, volume_id: int, selected_ids: List[int]) -> None:
     """Recheck saved unresolved files after a selection, within inbox_operation.
 
     Do not expand a single-file torrent review to neighboring downloads, or
     replace explicit choices and import/hold states. Imports still revalidate.
     """
     root = valid_root(Settings().sv.pack_inbox_folder)
+    selected = PackInboxDB.review_selection(token, str(root))
+    selected_path = Path(selected['relative_path']) if selected else Path()
+    selected_data = filename_data(selected_path.name)
+    number = selected_data['issue_number']
+    # Only carry a series choice across explicitly numbered ordinary issues.
+    # A custom issue choice must not establish a numbering rule for siblings.
+    propagate = False
+    if selected_data['series'] and isinstance(number, (int, float)) and not selected_data['special_version']:
+        numbered = PackInboxDB.range_issues(volume_id, number, number)
+        propagate = len(numbered) == 1 and [numbered[0]['id']] == selected_ids
     for item in PackInboxDB.review_rows(str(root)):
         if item['status'] != 'review':
             continue
@@ -342,14 +352,28 @@ def _refresh_review_matches() -> None:
                     or stat.st_size != row['size']
                     or str(stat.st_mtime_ns) != row['mtime']):
                 continue
-            volume, ids, reason = classify(source.name)
+            data = filename_data(source.name)
+            related = (propagate
+                       and Path(row['relative_path']).parent == selected_path.parent
+                       and all(data[key] == selected_data[key] for key in (
+                           'series', 'year', 'volume_number', 'annual', 'special_version')))
+            if related:
+                issue_number = data['issue_number']
+                if not isinstance(issue_number, (int, float)):
+                    continue
+                issues = PackInboxDB.range_issues(volume_id, issue_number, issue_number)
+                if len(issues) != 1:
+                    continue
+                volume, ids, reason = manual_identity(volume_id, [issues[0]['id']])
+            else:
+                volume, ids, reason = classify(source.name)
             if volume is None:
                 continue
             message = reason or f"{volume['title']} ({volume['year']}) — {len(ids)} issue(s)"
             PackInboxDB.save_scan(
                 str(root), row['relative_path'], row['token'],
                 'owned' if reason else 'matched', message, row['size'],
-                row['mtime'], volume['id'], json.dumps(ids))
+                row['mtime'], volume['id'], json.dumps(ids), related)
         except (ValueError, OSError):
             continue
     get_db().connection.commit()

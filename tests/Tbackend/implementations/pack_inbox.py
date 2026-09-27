@@ -214,6 +214,45 @@ class PackInbox(unittest.TestCase):
         pack_inbox.set_match(row['token'], 3, [3])
         self.assertEqual(self.scan()[0]['status'], 'matched')
 
+    def test_series_choice_matches_numbered_siblings_and_survives_rescan(self):
+        self.db.execute("UPDATE volumes SET title='Different Library Title' WHERE id=1")
+        for issue in range(2, 8):
+            self.db.execute(
+                "INSERT INTO issues(id,volume_id,comicvine_id,issue_number,calculated_issue_number) VALUES(?,1,?,?,?)",
+                (100 + issue, 100 + issue, str(issue), issue))
+        for issue in range(1, 9):
+            self.comic(f'Collection/Alternate Name #{issue:03}.cbz')
+        self.comic('Elsewhere/Alternate Name #003.cbz')
+        self.comic('Collection/Alternate Name #003 (2026).cbz')
+        self.comic('Collection/Another Name #003.cbz')
+        self.comic('Collection/Alternate Name.cbz')
+        rows = {r['relative_path']: r for r in self.scan()}
+        # Preserve an explicit choice of a different series for issue 2.
+        second = rows['Collection/Alternate Name #002.cbz']['token']
+        self.db.execute("UPDATE pack_inbox SET manual_match=1,volume_id=2,issue_ids='[2]',status='matched' WHERE token=?", (second,))
+        pack_inbox.set_match(rows['Collection/Alternate Name #001.cbz']['token'], 1, [1])
+        updated = {r['relative_path']: r for r in self.scan()}
+        for issue in range(3, 8):
+            row = updated[f'Collection/Alternate Name #{issue:03}.cbz']
+            self.assertEqual(row['status'], 'matched')
+            journal = self.db.execute('SELECT * FROM pack_inbox WHERE token=?', (row['token'],)).fetchone()
+            self.assertEqual(journal['issue_ids'], f'[{100 + issue}]')
+            self.assertTrue(journal['manual_match'])
+        self.assertEqual(updated['Collection/Alternate Name #008.cbz']['status'], 'review')
+        for name in ['Elsewhere/Alternate Name #003.cbz', 'Collection/Alternate Name #003 (2026).cbz',
+                     'Collection/Another Name #003.cbz', 'Collection/Alternate Name.cbz']:
+            self.assertEqual(updated[name]['status'], 'review')
+        journal = self.db.execute("SELECT volume_id FROM pack_inbox WHERE relative_path='Collection/Alternate Name #002.cbz'").fetchone()
+        self.assertEqual(journal['volume_id'], 2)
+
+    def test_custom_issue_number_choice_does_not_propagate(self):
+        self.comic('Alternate #005.cbz')
+        self.comic('Alternate #001.cbz')
+        rows = {r['relative_path']: r for r in self.scan()}
+        result = pack_inbox.set_match(rows['Alternate #005.cbz']['token'], 1, [1])
+        updated = {r['relative_path']: r for r in result['items']}
+        self.assertEqual(updated['Alternate #001.cbz']['status'], 'review')
+
     def test_selecting_series_refreshes_only_unchanged_saved_review_files(self):
         self.comic('New Series 001 (2026).cbz')
         changed = self.comic('New Series 1 (2026).cbz')

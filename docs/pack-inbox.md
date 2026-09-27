@@ -54,7 +54,12 @@ Ambiguous matches can be resolved with **Find / Add Series**. Choose the correct
 library series and, when requested, its issue. The selection is saved for that
 file and survives rescans. After linking, unchanged unresolved files already
 in this review are rechecked automatically for clear library matches. Explicit
-choices and held copies are preserved; other folders are not scanned. Collection positions such as `008 -` are not treated
+choices and held copies are preserved; other folders are not scanned.
+For numbered files with the same parsed title, year and edition in the same
+folder, the selected series is also applied to unresolved siblings. Each file
+must have exactly one corresponding issue in that series. These per-file links
+survive rescans. Custom issue-number overrides and unnumbered books do not
+establish a shared series choice. Collection positions such as `008 -` are not treated
 as issue numbers when they leave the parsed series title empty.
 
 - Each CBZ, CBR, CB7 or PDF filename is matched independently. The weekly folder's
