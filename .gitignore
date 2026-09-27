@@ -142,3 +142,6 @@ temp_downloads/*
 
 # Project management files
 release*.sh
+
+# Frontend test dependencies
+node_modules/

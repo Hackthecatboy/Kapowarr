@@ -49,6 +49,10 @@ isort .
 python3 -m unittest discover -s ./tests -p '*.py'
 ```
 
+For Pack Inbox frontend changes, also run the
+[frontend regression tests](tests/frontend/README.md). These use Node.js 22+
+and mocked API responses; no running Kapowarr instance is required.
+
 Visual Studio Code is the editor used mostly for this project, but it is not a requirement to use it. A VSC Workspace settings file is included to help with setting up the usage of these tools with integration into VSC, assuming the accompanying extensions of these tools are installed. There is also a .pre-commit-config.yaml file that configures pre-commit hooks, if you have that installed and want to use it. It runs the four tools before a commit.
 
 ## Strict rules

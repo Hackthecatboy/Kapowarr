@@ -1,0 +1,164 @@
+const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const { resolve } = require('node:path');
+const { test } = require('node:test');
+const { JSDOM } = require('jsdom');
+
+const root = resolve(__dirname, '../..');
+const template = readFileSync(resolve(root, 'frontend/templates/pack_inbox.html'), 'utf8');
+const script = readFileSync(resolve(root, 'frontend/static/js/pack_inbox.js'), 'utf8');
+const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+async function page(t, overrides = {}) {
+    // Load real page markup and templates without executing its Jinja wrappers.
+    // No resource loader is enabled: this suite must never contact providers.
+    const dom = new JSDOM(template.replace(/\{%[\s\S]*?%\}/g, ''), {
+        runScripts: 'outside-only', url: 'http://kapowarr.test/'
+    });
+    const w = dom.window;
+    const state = {
+        folder: '/inbox', items: [], jobs: [], subscriptions: [], releases: [],
+        confirm: false, calls: [], unexpected: [], timers: [], ...overrides
+    };
+    t.after(() => { dom.window.close(); assert.deepEqual(state.unexpected, []); });
+    w.url_base = '/kapowarr';
+    w.usingApiKey = async () => 'fixture-key';
+    w.setInterval = (fn, delay) => state.timers.push({ fn, delay });
+    w.HTMLElement.prototype.scrollIntoView = () => {};
+    w.confirm = () => state.confirm;
+    w.fetchAPI = async path => {
+        if (path === '/pack-inbox') return { result: { folder: state.folder, items: state.items } };
+        if (path === '/pack-downloads') return { result: state.jobs };
+        if (path === '/pack-subscriptions') return { result: state };
+        state.unexpected.push(path);
+        throw Error('Unexpected GET ' + path);
+    };
+    w.sendAPI = async (method, path, key, params, data) => {
+        assert.equal(method, 'POST');
+        assert.equal(key, 'fixture-key');
+        state.calls.push({ path, data: JSON.parse(JSON.stringify(data)) });
+        let result;
+        if (state.respond) result = await state.respond(path, data);
+        if (result === undefined) {
+            state.unexpected.push(path);
+            throw Error('Unexpected POST ' + path);
+        }
+        return { json: async () => ({ result }) };
+    };
+    w.eval(script);
+    await tick();
+    return { w, state, el: selector => w.document.querySelector(selector) };
+}
+
+const job = (id, status) => ({
+    id, status, root: '/inbox', folder: '/inbox/Pack-' + id,
+    title: 'Weekly ' + id, message: 'Fixture', received: 100, total: 100
+});
+
+test('review filters clear hidden selections and import only visible matches', async t => {
+    const { el, state } = await page(t, {
+        items: [
+            { status: 'matched', relative_path: 'Week/A.cbz', token: 'a' },
+            { status: 'matched', relative_path: 'Week/B.cbz', token: 'b' },
+            { status: 'imported', relative_path: 'Week/C.cbz', destination: '/library/C.cbz' }
+        ],
+        respond: path => path === '/pack-inbox/import' ? { folder: '/inbox', items: [] } : undefined
+    });
+    assert.equal(el('#inbox-results').querySelectorAll('tr:not([hidden])').length, 2);
+    el('#inbox-select').click();
+    assert.equal(el('#inbox-import').textContent, 'Import Selected Copies (2)');
+    el('#inbox-search').value = 'A.cbz';
+    el('#inbox-search').oninput();
+    assert.equal(el('#inbox-import').textContent, 'Import Selected Copies (1)');
+    await el('#inbox-import').onclick();
+    assert.deepEqual(state.calls.at(-1), { path: '/pack-inbox/import', data: { items: ['a'] } });
+});
+
+test('finished jobs collapse, releases deduplicate and job collapse survives refresh', async t => {
+    const { el } = await page(t, {
+        jobs: [job('active', 'ready'), job('done', 'finished')],
+        releases: [
+            { title: '2026.09.09 Weekly', article: 'old', status: 'review', message: '' },
+            { title: '2026.09.16 Weekly', article: 'new', status: 'review', message: '' },
+            { title: '2026.09.09 Weekly', article: 'old', status: 'review', message: '' }
+        ]
+    });
+    assert.equal(el('#pack-download-jobs').children.length, 1);
+    assert.equal(el('#pack-finished-jobs').children.length, 1);
+    assert.equal(el('#pack-finished').open, false);
+    assert.equal(el('#pack-subscription-releases').children.length, 2);
+    assert.match(el('#pack-subscription-releases').firstElementChild.textContent, /^2026.09.16/);
+    el('#pack-download-jobs details').open = false;
+    await tick();
+    await el('#pack-jobs-refresh').onclick();
+    assert.equal(el('#pack-download-jobs details').open, false);
+});
+
+test('finish requires confirmation and uses the preview token', async t => {
+    const { el, state } = await page(t, {
+        jobs: [job('id', 'ready')], folder: '/inbox/Pack-id/ready',
+        respond: path => {
+            if (path === '/pack-downloads/finish-preview') return {
+                token: 'confirmation', files: [{ path: 'payload.archive' }], bytes: 100
+            };
+            if (path === '/pack-downloads/finish') return {};
+        }
+    });
+    assert.equal(el('#pack-download-folder').value, '/inbox');
+    await el('.pack-finish').onclick();
+    assert.equal(state.calls.length, 1);
+    assert.equal(el('.pack-finish').disabled, false);
+    state.confirm = true;
+    await el('.pack-finish').onclick();
+    assert.deepEqual(state.calls.at(-1), {
+        path: '/pack-downloads/finish', data: { token: 'confirmation', confirm: true }
+    });
+});
+
+test('search pagination, subscription creation, pause, weekday and manual check', async t => {
+    const { el, state } = await page(t, {
+        subscriptions: [{ id: 1, enabled: 1, weekday: 6, query: 'weekly pack',
+            link_filter: 'Marvel', service: 'GetComics', automatic: 1, message: '' }],
+        respond: path => {
+            if (path === '/pack-subscriptions/search') return { articles: [], has_more: true };
+            if (['create', 'toggle', 'schedule', 'check'].some(action => path === '/pack-subscriptions/' + action)) return {};
+        }
+    });
+    el('#pack-discovery-form').onsubmit({ preventDefault() {} });
+    await tick();
+    assert.equal(state.calls.at(-1).data.page, 1);
+    el('#pack-query').value = 'changed text';
+    await el('#pack-older').onclick();
+    assert.deepEqual(state.calls.at(-1).data, { query: 'weekly pack', page: 2 });
+    el('#pack-link-filter').value = 'Marvel';
+    el('#pack-weekday').value = '4';
+    await el('#pack-subscribe').onclick();
+    assert.equal(state.calls.at(-1).data.weekday, 4);
+    assert.equal(state.calls.at(-1).data.automatic, true);
+    await el('.pack-sub-toggle').onclick();
+    assert.deepEqual(state.calls.at(-1).data, { id: 1, enabled: false });
+    el('.pack-sub-day select').value = '2';
+    await el('.pack-sub-save').onclick();
+    assert.deepEqual(state.calls.at(-1).data, { id: 1, weekday: 2 });
+    await el('#pack-check').onclick();
+    assert.equal(state.calls.at(-1).path, '/pack-subscriptions/check');
+});
+
+test('provider choices disable unsupported mirrors and submit the selected token', async t => {
+    const { el, state } = await page(t, {
+        respond: path => {
+            if (path === '/pack-downloads/preview') return { title: '<img src=x>', choices: [
+                { token: 'http', label: 'Main', service: 'GetComics', supported: true },
+                { token: 'mega', label: 'Mega', service: 'Mega', supported: false }
+            ] };
+            if (path === '/pack-downloads/download') return {};
+        }
+    });
+    el('#pack-article').value = 'https://getcomics.org/weekly/';
+    await el('#pack-download-form').onsubmit({ preventDefault() {} });
+    const buttons = el('#pack-download-choices').querySelectorAll('button');
+    assert.equal(buttons[1].disabled, true);
+    assert.equal(el('#pack-download-status img'), null);
+    await buttons[0].onclick();
+    assert.deepEqual(state.calls.at(-1).data, { token: 'http', folder: '/inbox' });
+});

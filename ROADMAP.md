@@ -175,5 +175,9 @@ Kapowarr architecture. Complete and verify each slice separately.
    explicit fields. Applied conservative formatting and sorted imports while
    preserving Python 3.8 syntax and existing message strings. Unvalidated API
    input remains permissively typed until runtime validation.
-5. **Repeatable frontend tests:** move the temporary UI regression checks into
-   the repository with documented setup and execution.
+5. **Repeatable frontend tests (complete; locally verified):** Pack Inbox DOM
+   regression checks now live in `tests/frontend`, with pinned dependencies,
+   [setup instructions](tests/frontend/README.md) and a dedicated CI workflow.
+   Five tests cover import selection, history, cleanup confirmation, subscriptions
+   and download choices. Browser appearance and live integrations still need
+   separate validation.
