@@ -72,6 +72,17 @@ main:has(#massedit-toggle:checked) #library-container {
 /*  */
 /* Tool Bar */
 /*  */
+.library-view-options {
+    gap: .75rem;
+    padding: .375rem;
+    align-items: center;
+}
+
+.library-view-options > select {
+    width: auto;
+    flex: 0 0 auto;
+}
+
 #sort-button {
 	width: 9rem;
 }
