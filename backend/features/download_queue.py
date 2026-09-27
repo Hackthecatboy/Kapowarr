@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from os import listdir
 from os.path import basename, join
 from time import sleep
@@ -27,6 +28,7 @@ from backend.base.logging import LOGGER
 from backend.features.post_processing import (PostProcessor,
                                               PostProcessorTorrentsComplete,
                                               PostProcessorTorrentsCopy)
+from backend.features.direct_import import HeldDirectImport
 from backend.features.torrent_downloads import run_torrent
 from backend.features.usenet_downloads import run_usenet
 from backend.implementations.blocklist import add_to_blocklist
@@ -284,6 +286,12 @@ class DownloadHandler(metaclass=Singleton):
             else:
                 covered_issues = float(download['covered_issues'])
 
+            if download['external_phase'] == 'ddl_importing':
+                held = HeldDirectImport(json.loads(download['external_token']))
+                self.queue += self.__prepare_downloads_for_queue([held])
+                WebSocket().emit(AddedToQueueEvent(held))
+                continue
+
             DownloadClient = DownloadClients.get_client(
                 DownloadClientIdentifier(download['client_type'])
             )
@@ -417,7 +425,21 @@ class DownloadHandler(metaclass=Singleton):
             # While this download is post-processing, start the next one.
             self._process_queue()
 
-            pp.success()
+            try:
+                pp.success()
+            except Exception:
+                LOGGER.exception('Direct import %s failed; retained for review', download.id)
+                row = get_db().execute(
+                    'SELECT external_token FROM download_queue WHERE id=?', (download.id,)).fetchone()
+                if row and row['external_token']:
+                    held = HeldDirectImport(json.loads(row['external_token']))
+                    held.download_thread = download.download_thread
+                    self.queue[self.queue.index(download)] = held
+                    ws.emit(QueueStatusEvent(held))
+                else:
+                    download.state = DownloadState.PAUSED_STATE
+                    ws.emit(QueueStatusEvent(download))
+                return
 
         self.queue.remove(download)
         ws.emit(RemovedFromQueueEvent(download))
@@ -621,6 +643,11 @@ class DownloadHandler(metaclass=Singleton):
     # region Removing and stopping
     def recover(self, download_id: int, action: str) -> None:
         download = self.get_one(download_id)
+        if isinstance(download, HeldDirectImport) and action == 'forget':
+            PostProcessor(download).ctx.remove_from_queue()
+            self.queue.remove(download)
+            WebSocket().emit(RemovedFromQueueEvent(download))
+            return
         if not isinstance(download, UsenetDownload):
             raise InvalidKeyValue('action', action)
         if action == 'retry' and download.can_retry:
@@ -654,6 +681,9 @@ class DownloadHandler(metaclass=Singleton):
         LOGGER.info(f'Removing download with id {download_id} and {blocklist=}')
 
         download = self.get_one(download_id)
+        if isinstance(download, HeldDirectImport):
+            self.recover(download_id, 'forget')
+            return
         if not download.download_thread:
             return
 

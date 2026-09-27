@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from itertools import chain
-from os import utime
+from os import utime, mkdir
 from os.path import basename, dirname, getmtime, isdir, isfile, join, splitext
 from typing import Dict, List, Set, Tuple, Union
 from zipfile import ZipFile
@@ -19,7 +19,7 @@ from backend.base.files import (archive_contains_issues, create_folder,
                                 create_zip_archive,
                                 delete_empty_parent_folders,
                                 delete_file_folder, generate_archive_folder,
-                                list_files, rename_file,
+                                list_files, move_file_without_overwrite,
                                 set_detected_extension)
 from backend.base.helpers import run_rar
 from backend.base.logging import LOGGER
@@ -36,9 +36,8 @@ def extract_files_from_folder(
     source_folder: str,
     volume_id: int
 ) -> List[str]:
-    """Move files out of the source folder in to the volume folder, but only if
-    they match to the volume. Otherwise they are deleted. The source folder
-    is always deleted afterwards.
+    """Move matching comics without overwriting existing files.
+    Mixed or unmatched contents are retained in the source folder for review.
 
     Args:
         source_folder (str): The folder to extract files out of.
@@ -70,16 +69,14 @@ def extract_files_from_folder(
         if folder_extraction_filter(efd, volume_data, volume_issues, end_year):
             relevant_files.append(file)
 
-    if not relevant_files:
-        LOGGER.warning(
-            "No relevant files found in folder. Keeping all media files."
-        )
-        relevant_files = folder_contents
+    if not relevant_files or len(relevant_files) != len(folder_contents):
+        raise ValueError(
+            'Archive contains unmatched comics or no matching comics. '
+            'Archive and extracted files retained for review with Pack Inbox.')
 
     LOGGER.debug(f'Relevant files: {relevant_files}')
 
-    # Move matching files to main folder and delete source folder
-    # (including non-matching files).
+    # All comic members matched. Preserve existing library files on collisions.
     result = []
     for file in relevant_files:
         if file.endswith(FileConstants.IMAGE_EXTENSIONS):
@@ -97,8 +94,7 @@ def extract_files_from_folder(
 
         dest = splitext(dest)[0] + splitext(set_detected_extension(file))[1]
 
-        rename_file(file, dest)
-        result.append(dest)
+        result.append(move_file_without_overwrite(file, dest))
 
     delete_file_folder(source_folder)
     return result
@@ -304,11 +300,7 @@ class ConvertersManager:
 @ConvertersManager.register_converter("zip", "cbz")
 def zip_to_cbz(file: str) -> List[str]:
     target = splitext(file)[0] + '.cbz'
-    rename_file(
-        file,
-        target
-    )
-    return [target]
+    return [move_file_without_overwrite(file, target)]
 
 
 @ConvertersManager.register_converter("zip", "rar", supports_32bit=False)
@@ -365,6 +357,7 @@ def zip_to_folder(file: str) -> List[str]:
 
     volume_folder = Volume(volume_id).vd.folder
     archive_folder = generate_archive_folder(volume_folder, file)
+    mkdir(archive_folder)  # Refuse to overwrite a previous partial extraction.
 
     with ZipFile(file, 'r') as zip:
         zip.extractall(archive_folder)
@@ -391,11 +384,7 @@ def zip_to_folder(file: str) -> List[str]:
 @ConvertersManager.register_converter("cbz", "zip")
 def cbz_to_zip(file: str) -> List[str]:
     target = splitext(file)[0] + '.zip'
-    rename_file(
-        file,
-        target
-    )
-    return [target]
+    return [move_file_without_overwrite(file, target)]
 
 
 @ConvertersManager.register_converter("cbz", "rar", supports_32bit=False)
@@ -422,11 +411,7 @@ def cbz_to_folder(file: str) -> List[str]:
 @ConvertersManager.register_converter("rar", "cbr")
 def rar_to_cbr(file: str) -> List[str]:
     target = splitext(file)[0] + '.cbr'
-    rename_file(
-        file,
-        target
-    )
-    return [target]
+    return [move_file_without_overwrite(file, target)]
 
 
 @ConvertersManager.register_converter("rar", "zip", supports_32bit=False)
@@ -491,7 +476,7 @@ def rar_to_folder(file: str) -> List[str]:
 
     volume_folder = Volume(volume_id).vd.folder
     archive_folder = generate_archive_folder(volume_folder, file)
-    create_folder(archive_folder)
+    mkdir(archive_folder)  # Refuse to overwrite a previous partial extraction.
 
     run_rar([
         'x', # Extract files with full path
@@ -522,11 +507,7 @@ def rar_to_folder(file: str) -> List[str]:
 @ConvertersManager.register_converter("cbr", "rar")
 def cbr_to_rar(file: str) -> List[str]:
     target = splitext(file)[0] + '.rar'
-    rename_file(
-        file,
-        target
-    )
-    return [target]
+    return [move_file_without_overwrite(file, target)]
 
 
 @ConvertersManager.register_converter("cbr", "zip", supports_32bit=False)

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Dict
 from backend.base.definitions import (BlocklistReason,
                                       DownloadState, FileConstants)
 from backend.base.files import (copy_directory, delete_file_folder,
-                                rename_file, set_detected_extension)
+                                rename_file, set_detected_extension, move_file_without_overwrite)
 from backend.base.logging import LOGGER
 from backend.implementations.blocklist import add_to_blocklist
 from backend.implementations.conversion import mass_convert
@@ -98,8 +98,8 @@ class PostProcessingContext:
     # region Ctx Moving
     def move_to_dest(self) -> None:
         "Move file/fold from download folder to final destination"
-        if not exists(self.download.files[0]):
-            return
+        if not self.download.files or not isfile(self.download.files[0]):
+            raise FileNotFoundError('Downloaded file is unavailable; retain import for review')
 
         folder = Volume(self.download.volume_id).vd.folder
         extension = splitext(self.download.files[0])[1].lower()
@@ -118,13 +118,9 @@ class PostProcessingContext:
         # the DB is left locked for a long period leading to timeouts.
         commit()
 
-        if exists(file_dest):
-            LOGGER.warning(
-                f'The file/folder {file_dest} already exists; replacing with downloaded file'
-            )
-            delete_file_folder(file_dest)
-
-        rename_file(self.download.files[0], file_dest)
+        if not isfile(self.download.files[0]):
+            raise ValueError('Direct import expects a file; retain folder for review')
+        file_dest = move_file_without_overwrite(self.download.files[0], file_dest)
         self.download.files = [file_dest]
         return
 
@@ -228,7 +224,7 @@ class PostProcessingContext:
 
             new_file = set_detected_extension(file)
             if new_file != file:
-                rename_file(file, new_file)
+                new_file = move_file_without_overwrite(file, new_file)
                 self.download.files[idx] = new_file
                 renamed_files[file] = new_file
 
@@ -272,13 +268,17 @@ class PostProcessor:
         LOGGER.info(
             f'Postprocessing of successful download: {self.download.id}'
         )
-        self.ctx.remove_from_queue()
-        self.ctx.add_to_history()
+        from backend.features.direct_import import checkpoint
+        checkpoint(self.download)
         self.ctx.move_to_dest()
+        checkpoint(self.download)
         self.ctx.rename_with_proper_extension()
+        checkpoint(self.download)
         self.ctx.add_file_to_database()
         self.ctx.convert_file()
         self.ctx.set_file_properties()
+        self.ctx.add_to_history()
+        self.ctx.remove_from_queue()
         return
 
     def seeding(self) -> None:

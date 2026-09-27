@@ -87,3 +87,29 @@ Retry Import. Restore the mapping and check that the same job imports after its
 new delay. Confirm the completed client file is retained and no duplicate job
 was submitted. A successful restart alone does not establish the original cause
 of a processing failure; capture its traceback if it recurs.
+
+## Direct-download imports (GetComics and file hosts)
+
+Direct imports now retain a persistent queue checkpoint before moving files. The
+queue entry and successful history record are finalized only after import finishes.
+If import fails or the server restarts during import, the job is held for review;
+it does not fetch the original download URL again. Inspect the download and volume
+folders and logs, rescan successfully imported files, then use **Remove from queue
+only**. This removes the tracking entry without deleting files. Partial imports
+are not automatically replayed; use Library Import or Pack Inbox for recovery.
+
+Existing destination files are preserved using numbered collision names during
+placement, extraction and extension-only conversion. Mixed/unmatched archive comics
+stop extraction before any member is moved: both the archive and extraction folder
+remain for review. A previous extraction folder must be reviewed before another
+attempt. This does not automatically enroll mixed packs in Pack Inbox.
+
+Development checks (use expendable fixtures in the test library):
+
+1. Import a file whose destination name already exists. Verify the existing bytes
+   are unchanged and the incoming file has a distinct name.
+2. Cause a conversion/import failure. Verify the job stays paused after restart,
+   even if its download URL expires; inspect and recover the files, then remove
+   the queue entry only. Verify that removal leaves the files intact.
+3. Extract a ZIP with one matching comic and one other series. Verify neither is
+   discarded and the ZIP remains available for manual pack review.

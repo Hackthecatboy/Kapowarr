@@ -12,7 +12,7 @@ from os import chmod, listdir, makedirs, remove, scandir, utime
 from os.path import (abspath, basename, commonpath, dirname, isdir,
                      isfile, join, relpath, samefile, sep, splitext)
 from re import compile
-from shutil import chown, copy2, copytree, move, rmtree
+from shutil import chown, copy2, copytree, move, rmtree, copyfileobj, copystat
 from typing import Dict, Iterable, List, Sequence, Union
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -829,6 +829,30 @@ def rename_file(
     move(before, after, copy_function=copy)
 
     return
+
+
+def move_file_without_overwrite(before: str, after: str) -> str:
+    """Reserve a collision-safe name; retain the source if copying fails."""
+    create_folder(dirname(after))
+    stem, extension = splitext(after)
+    candidate = after
+    number = 0
+    while True:
+        try:
+            output = open(candidate, 'xb')
+            break
+        except FileExistsError:
+            number += 1
+            candidate = f'{stem} ({number}){extension}'
+    try:
+        with output, open(before, 'rb') as source:
+            copyfileobj(source, output)
+        copystat(before, candidate)
+    except Exception:
+        remove(candidate)
+        raise
+    remove(before)
+    return candidate
 
 
 def copy_directory(source: str, target: str) -> None:
