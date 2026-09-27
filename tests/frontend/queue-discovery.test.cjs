@@ -79,3 +79,21 @@ test('client errors are visible even with an empty queue', async t => {
     await w.fillQueue('key');
     assert.equal(el('#discovery-status').textContent, 'qbit: Connection failed');
 });
+
+test('review waits for the scan response body and recovers from interrupted delivery', async t => {
+    const {w, el} = await page(t);
+    let failBody;
+    let reading = false;
+    w.sendAPI = async () => ({ok: true, json: () => {
+        reading = true;
+        return new Promise((resolve, reject) => {failBody = reject;});
+    }});
+    const pending = el('#queue .review-torrent-dl').onclick();
+    await tick();
+    assert.equal(reading, true);
+    assert.equal(el('#queue .review-torrent-dl').disabled, true);
+    failBody(new Error('Connection interrupted'));
+    await pending;
+    assert.equal(el('#queue .review-torrent-dl').disabled, false);
+    assert.match(el('#queue .recovery-error').textContent, /Could not scan/);
+});

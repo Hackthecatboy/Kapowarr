@@ -135,6 +135,9 @@ async function reviewTorrent(obj, api_key, entry) {
             client_id: obj.client_id, info_hash: obj.torrent_hash
         });
         if (!response.ok) throw response;
+        const body = await response.json();
+        if (!body.result || typeof body.result.folder !== 'string' || !Array.isArray(body.result.items))
+            throw new Error('Incomplete inbox scan response');
         window.location.assign(`${url_base}/pack-inbox`);
     } catch (failure) {
         let message = 'Could not scan this torrent. Check its completion state, mounts and remote mappings.';

@@ -62,8 +62,10 @@ an uncertain submission or partially completed import.
 - [x] Discover external qBittorrent category jobs in Activity with explicit
   completed-file review through Pack Inbox; no automatic import or client changes.
   Locally tested; NAS validation pending.
-- [ ] Investigate intermittent first-click Review Files failures/stale initial
-  results reported on Synology; a subsequent click succeeds. Server logs needed.
+- [ ] Validate first-click Review Files handoff on Synology. Fixed the scan's
+  settings-cache race by publishing the folder at completion and invalidating
+  cached settings after commit. Activity now awaits the complete scan response
+  before navigation. Stale-cache and interrupted-response regressions pass.
 - [ ] Validate RSS sync alongside imports and volume adds on Synology.
   User correlated database contention with RSS; fixed uncommitted task-history
   and rejected-download blocklist writes spanning download preparation/network
@@ -216,6 +218,6 @@ Kapowarr architecture. Complete and verify each slice separately.
 5. **Repeatable frontend tests (complete; locally verified):** Pack Inbox DOM
    regression checks now live in `tests/frontend`, with pinned dependencies,
    [setup instructions](tests/frontend/README.md) and a dedicated CI workflow.
-   Fifteen tests cover sequential batch imports, interrupted requests, import selection, history, cleanup confirmation, subscriptions,
+   Sixteen tests cover sequential batch imports, interrupted requests, import selection, history, cleanup confirmation, subscriptions,
    download choices, per-file series selection and review-only category discovery. Browser appearance and live integrations still need
    separate validation.

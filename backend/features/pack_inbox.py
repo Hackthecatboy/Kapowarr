@@ -407,7 +407,6 @@ def scan(folder: object, *, filename: Optional[str] = None) -> InboxListing:
     """
     root = valid_root(folder)
     with inbox_operation():
-        Settings().update({'pack_inbox_folder': str(root)})
         cursor = get_db()
         paths = []
         unfinished = [Path(row[0])
@@ -474,7 +473,12 @@ def scan(folder: object, *, filename: Optional[str] = None) -> InboxListing:
                 str(root), relative, uuid4().hex, status, message,
                 size, mtime, volume_id, json.dumps(ids), manual
             )
+        # Publish the folder with the completed scan. A concurrent reader can
+        # refill the settings cache from the old committed value during update,
+        # so invalidate it again only after the new value becomes visible.
+        Settings().update({'pack_inbox_folder': str(root)})
         cursor.connection.commit()
+        Settings().clear_cache()
         return listing()
 
 

@@ -36,6 +36,7 @@ class PackInbox(unittest.TestCase):
         self.start_patch('backend.features.pack_inbox.get_db', return_value=self.cursor)
         self.start_patch('backend.internals.db_models.get_db', return_value=self.cursor)
         self.settings = SimpleNamespace(sv=SimpleNamespace(pack_inbox_folder='', rename_downloaded_files=False))
+        self.settings.clear_cache = Mock()
         self.settings.update = lambda values: setattr(self.settings.sv, 'pack_inbox_folder', values['pack_inbox_folder'])
         self.start_patch('backend.features.pack_inbox.Settings', return_value=self.settings)
         self.db.execute('INSERT INTO root_folders(id,folder) VALUES(1,?)', (str(self.library),))
@@ -64,6 +65,27 @@ class PackInbox(unittest.TestCase):
 
     def scan(self):
         return pack_inbox.scan(str(self.inbox))['items']
+
+    def test_scan_invalidates_stale_folder_cache_after_commit(self):
+        self.comic('Alpha Comics 001 (2026).cbz')
+        self.settings.sv.pack_inbox_folder = '/previous-inbox'
+        def update(values):
+            # Model another request caching the old committed folder after
+            # Settings.update invalidates its cache but before scan commits.
+            self.db.execute("INSERT OR REPLACE INTO config(key,value) VALUES('pack_inbox_folder',?)",
+                            (values['pack_inbox_folder'],))
+            self.settings.sv.pack_inbox_folder = '/previous-inbox'
+        def clear():
+            self.assertFalse(self.db.in_transaction)
+            self.settings.sv.pack_inbox_folder = self.db.execute(
+                "SELECT value FROM config WHERE key='pack_inbox_folder'").fetchone()[0]
+        self.settings.update = update
+        self.settings.clear_cache.side_effect = clear
+        result = pack_inbox.scan(str(self.inbox))
+        self.assertEqual(result['folder'], str(self.inbox))
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(pack_inbox.listing()['folder'], str(self.inbox))
+        self.settings.clear_cache.assert_called_once()
 
     def test_manual_series_link_survives_rescan_and_imports_selected_issue(self):
         source = self.comic('Different Name #001 (2016).cbz')
