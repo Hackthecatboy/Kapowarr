@@ -4,8 +4,10 @@
 .inbox-actions button { padding: .6rem 1rem; border-radius: 4px; background: var(--accent-color); color: var(--nav-background-color); }
 .inbox-actions button:disabled { opacity: .5; }
 .inbox-table { overflow-x: auto; }
-#pack-inbox-page table { min-width: 36rem; }
+#pack-inbox-page table { min-width: 36rem; table-layout: fixed; }
 #pack-inbox-page table th { width: auto; text-align: left; }
+#pack-inbox-page table th:first-child { width: 4rem; }
+#pack-inbox-page table th:nth-child(2) { width: 55%; }
 #inbox-results td { border-top: 1px solid var(--border-color); overflow-wrap: anywhere; }
 #inbox-results input[type="checkbox"] { width: 1.1rem; }
 

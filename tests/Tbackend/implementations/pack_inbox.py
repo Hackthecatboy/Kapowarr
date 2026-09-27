@@ -201,6 +201,19 @@ class PackInbox(unittest.TestCase):
             with self.assertRaises(InvalidKeyValue):
                 pack_inbox.import_selected([row['token']])
 
+    def test_collection_prefix_keeps_ambiguous_file_selectable_in_picker(self):
+        self.volume(3, 'Civil War II FCBD')
+        self.volume(4, 'Civil War II FCBD')
+        self.db.execute("UPDATE volumes SET special_version='one-shot' WHERE id IN (3,4)")
+        self.comic('008 - Civil War II FCBD (2026).cbz')
+        row = self.scan()[0]
+        self.assertIn('Ambiguous', row['message'])
+        self.assertEqual(row['series_query'], 'Civil War II FCBD')
+        options = pack_inbox.match_options(row['token'], 3)
+        self.assertEqual(options['selected'], [3])
+        pack_inbox.set_match(row['token'], 3, [3])
+        self.assertEqual(self.scan()[0]['status'], 'matched')
+
     def test_symlinks_and_overlapping_folders_are_rejected(self):
         self.comic('Alpha Comics 001 (2026).cbz')
         (self.inbox/'link.cbz').symlink_to(self.library/'outside.cbz')

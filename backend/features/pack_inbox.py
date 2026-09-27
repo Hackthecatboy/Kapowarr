@@ -113,10 +113,17 @@ def safe_source(root: Path, relative: str) -> Path:
 
 
 def filename_data(name: str) -> FilenameData:
-    """Ignore a collection ordering prefix only when an explicit issue follows."""
+    """Ignore collection prefixes before explicit issues or empty parsed titles."""
     if re.search(r'#\d', name):
         name = re.sub(r'^\d+\s*-\s*', '', name)
-    return extract_filename_data(name, assume_volume_number=False, fix_year=True)
+    data = extract_filename_data(name, assume_volume_number=False, fix_year=True)
+    if not data['series']:
+        # A leading collection position can be mistaken for the issue number.
+        title = re.sub(r'^\d+\s*-\s*', '', name)
+        if title != name:
+            data = extract_filename_data(
+                title, assume_volume_number=False, fix_year=True)
+    return data
 
 
 def manual_identity(volume_id: int, ids: List[int]) -> Tuple[Optional[Row], List[int], str]:
@@ -323,7 +330,7 @@ def listing() -> InboxListing:
             source) is not None and source.is_file()
         if row['status'] in ('review', 'matched', 'owned'):
             data = filename_data(Path(row['relative_path']).name)
-            row['series_query'] = data['series']
+            row['series_query'] = data['series'] or source.stem
     return dict(folder=folder, items=rows)
 
 

@@ -50,6 +50,11 @@ folder for larger inboxes.
 
 ## Matching and preservation
 
+Ambiguous matches can be resolved with **Find / Add Series**. Choose the correct
+library series and, when requested, its issue. The selection is saved for that
+file and survives rescans. Collection positions such as `008 -` are not treated
+as issue numbers when they leave the parsed series title empty.
+
 - Each CBZ, CBR, CB7 or PDF filename is matched independently. The weekly folder's
   title/date is not used as a comic identity. Nested completed folders are scanned.
 - Matching uses the existing library title/alternate title, annual distinction,
