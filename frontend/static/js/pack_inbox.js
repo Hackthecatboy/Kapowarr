@@ -142,7 +142,7 @@ usingApiKey().then(apiKey => {
         for (const row of rows.children) {
             const state = row.dataset.status;
             const visible = (mode === 'all' || (mode === 'pending' && !['imported', 'discarded'].includes(state))
-                || (mode === 'review' && !['matched', 'imported', 'discarded'].includes(state)) || mode === state)
+                || (mode === 'review' && ['review', 'held', 'importing'].includes(state)) || mode === state)
                 && row.dataset.path.toLocaleLowerCase().includes(query);
             row.hidden = !visible;
             if (!visible) row.querySelectorAll('input').forEach(input => input.checked = false);

@@ -242,3 +242,19 @@ test('interrupted import stops without retrying or starting remaining files', as
     assert.match(el('#inbox-status').textContent, /HTTP 504/);
     assert.equal(el('#inbox-refresh').disabled, false);
 });
+
+
+test('review filter excludes owned entries while all retains them', async t => {
+    const {el} = await page(t, {
+        items: ['review', 'held', 'importing', 'owned', 'matched', 'imported', 'discarded']
+            .map(status => ({status, relative_path: status + '.cbz', token: status}))
+    });
+    const visible = () => [...el('#inbox-results').children]
+        .filter(row => !row.hidden).map(row => row.dataset.status);
+    el('#inbox-filter').value = 'review';
+    el('#inbox-filter').onchange();
+    assert.deepEqual(visible(), ['review', 'held', 'importing']);
+    el('#inbox-filter').value = 'all';
+    el('#inbox-filter').onchange();
+    assert.equal(visible().length, 7);
+});
