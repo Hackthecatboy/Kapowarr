@@ -629,3 +629,18 @@ CREATE TABLE IF NOT EXISTS pack_downloads(
 )
 """
 DB_SCHEMA += ';' + PACK_DOWNLOAD_SCHEMA + ';'
+
+PACK_SUBSCRIPTIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS pack_subscriptions(
+    id INTEGER PRIMARY KEY, query TEXT NOT NULL, link_filter TEXT NOT NULL,
+    service TEXT NOT NULL, folder TEXT NOT NULL, automatic INTEGER NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1, created TEXT NOT NULL,
+    last_checked TEXT, message TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS pack_subscription_releases(
+    subscription_id INTEGER NOT NULL, article TEXT NOT NULL, title TEXT NOT NULL,
+    status TEXT NOT NULL, message TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY(subscription_id, article)
+);
+"""
+DB_SCHEMA += PACK_SUBSCRIPTIONS_SCHEMA

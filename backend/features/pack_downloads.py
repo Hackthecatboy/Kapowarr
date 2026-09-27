@@ -97,8 +97,17 @@ def listing():
         return cursor.execute('SELECT * FROM pack_downloads ORDER BY rowid DESC LIMIT 100').fetchalldict()
 
 
-def start(token, folder):
+def download_root(folder):
     root = valid_root(folder)
+    for row in get_db().execute('SELECT folder FROM pack_downloads').fetchall():
+        managed = Path(row[0])
+        if root == managed or managed in root.parents:
+            raise InvalidKeyValue('folder', 'Choose the inbox root, not a previous pack job or its ready folder')
+    return root
+
+
+def start(token, folder):
+    root = download_root(folder)
     with _LOCK:
         item = _PREVIEWS.get(token) if isinstance(token, str) else None
         if item is None or monotonic() - item['created'] > 900:
@@ -214,3 +223,96 @@ def _worker(ident, item, destination):
     finally:
         with _LOCK:
             _ACTIVE.discard(ident)
+
+
+_CLEANUPS = {}
+
+
+def _pack_for_cleanup(ident):
+    if not isinstance(ident, str):
+        raise InvalidKeyValue('pack', 'Choose a pack job')
+    row = get_db().execute('SELECT * FROM pack_downloads WHERE id=?', (ident,)).fetchone()
+    if row is None or ident in _ACTIVE or row['status'] not in ('ready', 'held'):
+        raise InvalidKeyValue('pack', 'Only completed or held packs can be finished')
+    root = valid_root(row['root'])
+    folder = Path(row['folder'])
+    if folder != root / ('Pack-' + ident) or any(p.is_symlink() for p in (folder, *folder.parents)):
+        raise InvalidKeyValue('pack', 'Pack folder changed; review required')
+    for other in get_db().execute('SELECT folder FROM pack_downloads WHERE id != ?', (ident,)).fetchall():
+        if folder in Path(other[0]).parents:
+            raise InvalidKeyValue('pack', 'Another pack job is nested inside this folder; review manually')
+    for item in get_db().execute("SELECT root,relative_path FROM pack_inbox WHERE status='importing'").fetchall():
+        source = Path(item['root']) / item['relative_path']
+        if folder in source.parents:
+            raise InvalidKeyValue('pack', 'An interrupted import needs review before finishing this pack')
+    return folder
+
+
+def _inventory(folder):
+    import os
+    result = []
+    def unreadable(error):
+        raise InvalidKeyValue('pack', 'Cannot read the complete pack folder; review permissions')
+    for directory, dirs, files in os.walk(folder, followlinks=False, onerror=unreadable):
+        for path in [Path(directory)] + [Path(directory) / name for name in files]:
+            info = path.lstat()
+            if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+                raise InvalidKeyValue('pack', 'Special files or symlinks require manual review')
+            result.append((str(path), (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns), path.is_dir()))
+        if any((Path(directory) / name).is_symlink() for name in dirs):
+            raise InvalidKeyValue('pack', 'Symlinked folders require manual review')
+        if len(result) > 5000:
+            raise InvalidKeyValue('pack', 'Too many files for one cleanup; review manually')
+    if not result:
+        raise InvalidKeyValue('pack', 'Pack folder is unavailable')
+    return sorted(result)
+
+
+def cleanup_preview(ident):
+    from backend.features.pack_inbox import _LOCK as inbox_lock
+    with inbox_lock, _LOCK:
+        folder = _pack_for_cleanup(ident)
+        inventory = _inventory(folder)
+        token = uuid4().hex
+        for old, entry in list(_CLEANUPS.items()):
+            if monotonic() - entry[0] > 900:
+                del _CLEANUPS[old]
+        _CLEANUPS[token] = (monotonic(), ident, inventory)
+        files = [dict(path=str(Path(path).relative_to(folder)), size=info[2])
+                 for path, info, directory in inventory if not directory]
+        return dict(token=token, files=files, bytes=sum(f['size'] for f in files))
+
+
+def cleanup_confirm(token, confirmed):
+    from backend.features.pack_inbox import _LOCK as inbox_lock
+    with inbox_lock, _LOCK:
+        preview = _CLEANUPS.pop(token, None) if isinstance(token, str) else None
+        if confirmed is not True or preview is None or monotonic() - preview[0] > 900:
+            raise InvalidKeyValue('cleanup', 'Confirm a current cleanup preview')
+        _, ident, inventory = preview
+        folder = _pack_for_cleanup(ident)
+        if _inventory(folder) != inventory:
+            raise InvalidKeyValue('cleanup', 'Pack files changed; preview cleanup again')
+        try:
+            for path, before, directory in inventory:
+                if directory:
+                    continue
+                item = Path(path)
+                info = item.lstat()
+                if (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns) != before or item.is_symlink():
+                    raise ValueError('Pack changed during cleanup; remaining files retained')
+                item.unlink()
+            for path, _, directory in sorted(inventory, key=lambda item: len(Path(item[0]).parts), reverse=True):
+                if directory:
+                    Path(path).rmdir()
+        except (OSError, ValueError):
+            LOGGER.exception('Pack %s cleanup incomplete', ident)
+            _update(ident, status='held', message='Cleanup incomplete; preview remaining files again. Library imports are untouched.')
+            raise InvalidKeyValue('cleanup', 'Cleanup incomplete; inspect remaining files and preview again')
+        cursor = get_db()
+        for row in cursor.execute('SELECT token,root,relative_path,status FROM pack_inbox').fetchall():
+            if folder in (Path(row['root']) / row['relative_path']).parents and row['status'] != 'imported':
+                cursor.execute("UPDATE pack_inbox SET status='discarded',message='Discarded when finishing pack' WHERE token=?", (row['token'],))
+        cursor.connection.commit()
+        _update(ident, status='finished', message='Archive and remaining extracted files deleted by request. Library imports preserved.')
+        return dict(id=ident)

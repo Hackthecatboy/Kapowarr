@@ -32,6 +32,7 @@ TASK_INTERVALS = {
     #   but per se after each other, put them in that order in the dict.
     'update_all': '0 * * * *', # every hour at minute 0
     'backup_db': '0 0 * * 1', # every Monday at 00:00
+    'pack_subscriptions': '15 * * * *', # hourly pack discovery
     'rss_sync': '0,30 * * * *' # every half hour
 }
 
@@ -891,3 +892,25 @@ class RssSync(DownloadTask):
             for download in downloads
         ]
         return downloads
+
+
+@TaskHandler.register_task('pack_subscriptions')
+class CheckPackSubscriptions(LibraryTask):
+    stop = False
+    message = ''
+    display_title = 'Check Pack Subscriptions'
+
+    @property
+    def volume_id(self) -> None:
+        return None
+
+    @property
+    def issue_id(self) -> None:
+        return None
+
+    def __init__(self) -> None:
+        pass
+
+    def run(self) -> None:
+        from backend.features.pack_subscriptions import check
+        check()

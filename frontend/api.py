@@ -22,7 +22,7 @@ from backend.base.definitions import (BlocklistReason, BlocklistReasonID,
 from backend.base.files import folder_path
 from backend.base.helpers import hash_credential
 from backend.base.logging import LOGGER, get_log_file_contents, get_recent_logs
-from backend.features import pack_downloads
+from backend.features import pack_downloads, pack_subscriptions
 from backend.features.duplicates import scan as scan_duplicates, delete_selected as delete_duplicates
 from backend.features.download_queue import (DownloadHandler,
                                              delete_download_history,
@@ -839,10 +839,39 @@ def api_pack_download_action(action):
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         raise InvalidKeyValue('body', 'Expected an object')
+    if action == 'finish-preview':
+        return return_api(pack_downloads.cleanup_preview(data.get('id')))
+    if action == 'finish':
+        return return_api(pack_downloads.cleanup_confirm(data.get('token'), data.get('confirm')))
     if action == 'preview':
         return return_api(pack_downloads.preview(data.get('url')))
     if action == 'download':
         return return_api(pack_downloads.start(data.get('token'), data.get('folder')))
+    raise InvalidKeyValue('action', action)
+
+
+@api.route('/pack-subscriptions', methods=['GET'])
+@error_handler
+@auth
+def api_pack_subscriptions():
+    return return_api(pack_subscriptions.listing())
+
+
+@api.route('/pack-subscriptions/<action>', methods=['POST'])
+@error_handler
+@auth
+def api_pack_subscription_action(action):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise InvalidKeyValue('body', 'Expected an object')
+    if action == 'search':
+        return return_api(pack_subscriptions.search(data.get('query'), data.get('page', 1)))
+    if action == 'create':
+        return return_api(pack_subscriptions.create(data))
+    if action == 'toggle':
+        return return_api(pack_subscriptions.toggle(data.get('id'), data.get('enabled')))
+    if action == 'check':
+        return return_api(TaskHandler().add(TaskHandler.tasks['pack_subscriptions']()))
     raise InvalidKeyValue('action', action)
 
 

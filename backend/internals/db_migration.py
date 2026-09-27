@@ -1379,3 +1379,11 @@ def _migrate_pack_inbox():
 def _migrate_pack_downloads():
     from backend.internals.db import PACK_DOWNLOAD_SCHEMA
     get_db().execute(PACK_DOWNLOAD_SCHEMA)
+
+
+@DatabaseMigrationHandler.register_handler(57)
+def _migrate_pack_subscriptions():
+    from backend.internals.db import PACK_SUBSCRIPTIONS_SCHEMA
+    for statement in PACK_SUBSCRIPTIONS_SCHEMA.split(';'):
+        if statement.strip():
+            get_db().execute(statement)

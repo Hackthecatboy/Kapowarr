@@ -84,9 +84,9 @@ mount aliases and broader recurring-scan recovery remain part of stage 2.
 ## Scope and verification
 
 Stage 1 is a manually triggered folder inbox with reviewed import. An explicit
-GetComics article download flow is now available as described below. Scheduled
-scans, recurring weekly-pack rules, automatic ingestion and automatic creation of
-unknown series remain future work.
+GetComics article download flow is now available as described below. Scheduled inbox scans, automatic ingestion and automatic creation of unknown series
+remain future work. Article subscriptions can now discover and download new dated
+packs; importing is still reviewed.
 
 Filesystem/database tests cover multi-series routing, checksum-preserving copies,
 owned/ambiguous/unmatched files, stale previews, changed sources, symlinks, folder
@@ -128,14 +128,14 @@ The first slice reuses GetComics link discovery/resolution and HTTP download
 providers (GetComics direct links, MediaFire, WeTransfer and Pixeldrain). Mega and
 BitTorrent pack jobs are not supported yet. RAR, 7z, multipart and other unsupported
 payloads are retained for manual extraction into a separate completed folder.
-Archives are not deleted after import.
+Archives are not deleted merely by importing; use Finish Pack when done reviewing.
 
 Jobs survive restarts as held records, without automatic re-download. Partial
 payloads and failed extractions stay in their job folder; inspect logs before
 manual recovery. Inbox scans exclude unfinished/held managed pack folders, including
 when scanning a parent folder. Extract or copy reviewed content into a separate
-completed inbox folder to recover it. Automatic retry and job removal are not yet
-provided. Link deduplication does not identify alternate mirrors of the same pack.
+completed inbox folder to recover it. Automatic retry is not provided. Finish Pack can remove the retained job files
+after review. Link deduplication does not identify alternate mirrors of the same pack.
 
 Downloads/extraction are limited to 50 GiB and ZIPs to 2,000 entries. Unsafe ZIP
 paths, symlinks, duplicate entries and encrypted entries are rejected. Traversal
@@ -171,3 +171,46 @@ this update without importing them again. Scan the original pack folder to see i
 saved imported rows. Cleanup is per file; unmatched comics, the outer archive and
 folders are preserved. External/manual inbox folders remain copy-only to protect
 read-only mounts and torrent-managed originals.
+
+## Finish a pack and reclaim space
+
+Each ready or held job offers **Finish Pack / Delete Remaining Files**. It previews
+all files and their total size, then asks you to confirm permanent deletion of the
+outer archive and every remaining extracted file—including unselected/unmatched
+comics. Library copies and imported issue bindings are untouched. Cancel changes
+nothing. Changed files invalidate the preview; active downloads, in-progress import
+records, symlinks and nested pack jobs block cleanup. A partial cleanup error keeps
+the job held; inspect remaining files and preview again. Finished jobs stay in the
+history to prevent the same link being downloaded again.
+
+## Find older packs
+
+Expand **Find past packs and subscribe to future packs** and search article title
+words such as `weekly pack`. **Older Results** loads subsequent search pages.
+Choose **Preview Links**, then select a mirror using the normal download form.
+Older packs are never downloaded in bulk just because they appear in search.
+
+## Subscribe to future packs
+
+1. Set the article title words (for example `weekly pack`).
+2. Set **Download label contains** to identifying text from the article preview,
+   such as `Marvel`, and choose one supported service.
+3. Set the writable inbox **root** in the download form—not a prior job's `ready`
+   subfolder. Choose automatic download for review, or list for manual download.
+4. Click **Subscribe Using These Settings**. Checks run hourly at minute 15;
+   **Check Subscriptions Now** queues an immediate background check.
+
+Automatic mode considers dated article titles from the subscription's creation
+DATE onward (including releases dated today). It checks at most the first three
+search pages each time. All query words must occur in the article title. Older,
+undated or future-dated articles remain available for manual review. Exactly one
+supported link must match the selected service and label text; zero/multiple matches
+are listed for manual choice. A subscription downloads one selected bundle per
+article, not every publisher/part/mirror. Split/multipart packs require manual handling.
+
+Already tracked articles—including finished or held pack jobs—are not downloaded
+again automatically. If a pack is active, new releases wait for a subsequent check.
+Pause/Resume controls stop or resume future checks; they do not cancel an already
+started download. Imports always require Pack Inbox review. Recurring automatic
+import, automatic retry, and discovering arbitrarily deep history remain outside
+this slice. Live subscription discovery still needs a test against current hosting.

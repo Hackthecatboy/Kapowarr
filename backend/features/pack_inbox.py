@@ -18,7 +18,7 @@ from backend.internals.settings import Settings
 _LOCK = Lock()
 COMICS = {'.cbz', '.cbr', '.cb7', '.pdf'}
 ARCHIVES = {'.zip', '.rar', '.7z'}
-TERMINAL = {'imported', 'importing', 'held'}
+TERMINAL = {'imported', 'importing', 'held', 'discarded'}
 
 
 def _within(path, root):

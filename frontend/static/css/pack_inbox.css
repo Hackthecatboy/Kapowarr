@@ -18,3 +18,10 @@
 .inbox-add-series { text-decoration: underline; font-weight: bold; }
 
 .inbox-cleanup { margin-top: .5rem; padding: .5rem; background: var(--accent-color); color: var(--nav-background-color); }
+
+#pack-discovery-section { padding: 1rem; border: 1px solid var(--border-color); margin-block: 1rem; }
+#pack-discovery-section summary { cursor: pointer; font-weight: bold; }
+#pack-discovery-section label { display: block; margin-top: .75rem; }
+#pack-discovery-section input, #pack-discovery-section select { padding: .5rem; max-width: 100%; }
+#pack-discovery-section button { padding: .5rem; background: var(--accent-color); color: var(--nav-background-color); }
+#pack-download-jobs button + button { margin-left: .75rem; }

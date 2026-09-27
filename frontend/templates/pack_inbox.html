@@ -8,6 +8,27 @@
 {% block main %}
 <main id="pack-inbox-page"><div class="settings-container">
 <h2>Pack Inbox</h2>
+<details id="pack-discovery-section">
+<summary>Find past packs and subscribe to future packs</summary>
+<form id="pack-discovery-form">
+<label for="pack-query">Article title words</label>
+<input id="pack-query" value="weekly pack" required minlength="2" maxlength="150">
+<div class="inbox-actions"><button type="submit">Search Past Packs</button><button type="button" id="pack-older" disabled>Older Results</button></div>
+</form>
+<div id="pack-history-results"></div>
+<h3>Subscribe to new dated releases</h3>
+<p>Checks hourly from today's release date onward. Match one download label and service; ambiguous links require review. Downloads go to the writable folder below. Importing remains manual.</p>
+<label for="pack-link-filter">Download label contains (for example Marvel)</label>
+<input id="pack-link-filter" placeholder="Marvel" minlength="2" maxlength="150">
+<label for="pack-service">Download service</label>
+<select id="pack-service"><option>GetComics</option><option>MediaFire</option><option>WeTransfer</option><option>Pixeldrain</option></select>
+<label for="pack-sub-mode">When a new pack is found</label>
+<select id="pack-sub-mode"><option value="download">Download for inbox review</option><option value="review">List for manual download</option></select>
+<div class="inbox-actions"><button id="pack-subscribe" type="button">Subscribe Using These Settings</button><button id="pack-check" type="button">Check Subscriptions Now</button></div>
+<p id="pack-discovery-status" role="status"></p>
+<div id="pack-subscriptions"></div>
+<div id="pack-subscription-releases"></div>
+</details>
 <section id="pack-download-section">
 <h3>Download a GetComics pack</h3>
 <p>Preview a weekly-pack article and choose one download link. Download into a writable inbox folder; ZIP packs are extracted for review. Mega and torrent links are not supported here yet. RAR/7z and multipart packs need manual extraction. Nothing is automatically imported.</p>
