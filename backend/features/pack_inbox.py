@@ -3,16 +3,20 @@
 import hashlib
 import json
 import os
+from contextlib import contextmanager
 from pathlib import Path
+from sqlite3 import Row
 from threading import Lock
 from time import time
+from typing import (Any, BinaryIO, Dict, Iterator,
+                    List, Optional, Tuple, TypedDict)
 from uuid import uuid4
 
 from backend.base.custom_exceptions import InvalidKeyValue
 from backend.base.file_extraction import extract_filename_data
 from backend.implementations.matching import match_title
-from backend.internals.db import get_db
 from backend.implementations.naming import mass_rename
+from backend.internals.db import get_db
 from backend.internals.settings import Settings
 
 _LOCK = Lock()
@@ -21,18 +25,57 @@ ARCHIVES = {'.zip', '.rar', '.7z'}
 TERMINAL = {'imported', 'importing', 'held', 'discarded'}
 
 
-def _within(path, root):
+class InboxItem(TypedDict, total=False):
+    """A reviewed file returned to the Pack Inbox page.
+
+    series_query and destination are present only when applicable.
+    """
+
+    token: str
+    relative_path: str
+    status: str
+    message: str
+    destination: Optional[str]
+    can_cleanup: bool
+    series_query: str
+
+
+class InboxListing(TypedDict):
+    """The configured inbox folder and its saved review results."""
+
+    folder: str
+    items: List[InboxItem]
+
+
+@contextmanager
+def inbox_operation() -> Iterator[None]:
+    """Serialize imports, scans and managed-pack cleanup in this process.
+
+    Acquire this context before a download-job lock when both are needed.
+    It is not reentrant: callers must not nest inbox operations.
+    """
+    with _LOCK:
+        yield
+
+
+def _within(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
 
 
-def _digest(handle):
+def _digest(handle: BinaryIO) -> str:
+    """Hash the remaining bytes of an already-open binary stream."""
     result = hashlib.sha256()
     for chunk in iter(lambda: handle.read(1024 * 1024), b''):
         result.update(chunk)
     return result.hexdigest()
 
 
-def valid_root(value):
+def valid_root(value: object) -> Path:
+    """Validate an inbox folder and return its resolved absolute path.
+
+    Raises:
+        InvalidKeyValue: The folder is missing, symlinked or overlaps a library.
+    """
     if not isinstance(value, str) or not value.strip():
         raise InvalidKeyValue('folder', 'Choose a completed-pack folder visible inside Kapowarr')
     path = Path(value)
@@ -47,7 +90,12 @@ def valid_root(value):
     return root
 
 
-def safe_source(root, relative):
+def safe_source(root: Path, relative: str) -> Path:
+    """Resolve an existing file beneath a previously validated inbox root.
+
+    Raises:
+        ValueError: The file is missing, escapes the root or uses symlinks.
+    """
     path = root / relative
     if not _within(path, root) or '..' in Path(relative).parts:
         raise ValueError('Source is outside the inbox')
@@ -58,7 +106,14 @@ def safe_source(root, relative):
     return path
 
 
-def classify(name):
+def classify(name: str) -> Tuple[Optional[Row], List[int], str]:
+    """Match a filename to one library edition and its issue IDs.
+
+    Returns:
+        The volume row, issue IDs and a review reason. An empty reason denotes
+        a unique missing-issue match. A matched but owned edition retains its
+        volume and issue IDs alongside an ownership reason.
+    """
     data = extract_filename_data(name, assume_volume_number=False, fix_year=True)
     number = data['issue_number']
     standalone = number is None and data['special_version'] in (None, 'tpb', 'one-shot', 'hard-cover', 'omnibus')
@@ -100,7 +155,7 @@ def classify(name):
     return volume, ids, 'Already owned (all or part of this file)' if owned else ''
 
 
-def _managed_source(source):
+def _managed_source(source: Path) -> Optional[Path]:
     """Only extracted files owned by completed Kapowarr pack jobs are disposable."""
     for row in get_db().execute("SELECT folder FROM pack_downloads WHERE status='ready'").fetchall():
         ready = Path(row[0]) / 'ready'
@@ -110,7 +165,13 @@ def _managed_source(source):
     return None
 
 
-def _cleanup_imported(row):
+def _cleanup_imported(row: Dict[str, Any]) -> None:
+    """Delete a managed extracted source only after verifying its library copy.
+
+    The row is the committed import journal record. External sources remain
+    untouched. Verification failures retain the source and update the journal
+    message; they do not undo a successful import.
+    """
     cursor = get_db()
     source = Path(row['root']) / row['relative_path']
     ready = _managed_source(source)
@@ -149,10 +210,18 @@ def _cleanup_imported(row):
     cursor.connection.commit()
 
 
-def cleanup_selected(tokens):
+def cleanup_selected(tokens: object) -> InboxListing:
+    """Retry source cleanup for selected imported files in the saved inbox.
+
+    Raises:
+        InvalidKeyValue: Tokens are invalid or refer to unmanaged imports.
+
+    Returns:
+        Updated review results, including any retained-source explanations.
+    """
     if not isinstance(tokens, list) or not 1 <= len(tokens) <= 100 or any(not isinstance(t, str) for t in tokens):
         raise InvalidKeyValue('items', 'Select between 1 and 100 imported files')
-    with _LOCK:
+    with inbox_operation():
         root = valid_root(Settings().sv.pack_inbox_folder)
         cursor = get_db()
         rows = []
@@ -166,7 +235,8 @@ def cleanup_selected(tokens):
         return listing()
 
 
-def listing():
+def listing() -> InboxListing:
+    """Return saved review rows with available cleanup and series actions."""
     folder = Settings().sv.pack_inbox_folder
     rows = get_db().execute('SELECT token,relative_path,status,message,destination FROM pack_inbox WHERE root=? ORDER BY relative_path', (folder,)).fetchalldict()
     for row in rows:
@@ -179,9 +249,18 @@ def listing():
     return dict(folder=folder, items=rows)
 
 
-def scan(folder):
+def scan(folder: object) -> InboxListing:
+    """Save and scan a completed folder without importing its files.
+
+    Raises:
+        InvalidKeyValue: The folder is unsafe, unreadable, contains too many
+            entries or belongs to an unfinished managed pack.
+
+    Returns:
+        Saved review results. Imported and held journal entries are preserved.
+    """
     root = valid_root(folder)
-    with _LOCK:
+    with inbox_operation():
         Settings().update({'pack_inbox_folder': str(root)})
         cursor = get_db()
         paths = []
@@ -241,10 +320,22 @@ def scan(folder):
         return listing()
 
 
-def import_selected(tokens):
+def import_selected(tokens: object) -> InboxListing:
+    """Revalidate, copy and bind up to 100 selected missing-issue matches.
+
+    Each copy is journaled before writing, checksum-verified, then bound to
+    its issues. Failed copies are held for review. Verified managed sources
+    may be removed only after committing their library import.
+
+    Raises:
+        InvalidKeyValue: Selection tokens or the configured inbox are invalid.
+
+    Returns:
+        Updated review results, including per-file import or hold states.
+    """
     if not isinstance(tokens, list) or not tokens or len(tokens) > 100 or any(not isinstance(t, str) for t in tokens):
         raise InvalidKeyValue('items', 'Select between 1 and 100 matched files')
-    with _LOCK:
+    with inbox_operation():
         root = valid_root(Settings().sv.pack_inbox_folder)
         cursor = get_db()
         rows = []

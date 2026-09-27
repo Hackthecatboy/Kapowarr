@@ -6,6 +6,7 @@ from pathlib import Path, PurePosixPath
 from shutil import copyfileobj, disk_usage
 from threading import Lock
 from time import monotonic
+from typing import Any, Dict, List, Tuple, TypedDict
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 from zipfile import ZipFile, is_zipfile
@@ -16,11 +17,12 @@ from backend.base.custom_exceptions import InvalidKeyValue
 from backend.base.definitions import DownloadClientIdentifier as ID
 from backend.base.helpers import Session
 from backend.base.logging import LOGGER
-from backend.features.pack_inbox import valid_root
+from backend.features.pack_inbox import inbox_operation, valid_root
 from backend.implementations.download_client_manager import DownloadClients
 from backend.implementations.download_clients.base import BaseDirectDownload
 from backend.implementations.download_preppers.ddl.GetComics import (
-    _check_download_link, _get_title, _purify_link, _extract_button_links, _extract_list_links)
+    _check_download_link, _extract_button_links,
+    _extract_list_links, _get_title, _purify_link)
 from backend.internals.db import get_db
 from backend.internals.server import Server
 
@@ -33,6 +35,63 @@ HTTP_CLIENTS = {ID.DDL, ID.MEDIAFIRE, ID.WETRANSFER, ID.PIXELDRAIN,
                 ID.MEDIAFIRE_FOLDER, ID.PIXELDRAIN_FOLDER}
 
 
+class PackJobResult(TypedDict):
+    """Identity of a newly submitted or finished pack job."""
+
+    id: str
+
+
+class PackDownloadChoice(TypedDict):
+    """One labelled mirror and its short-lived selection token."""
+
+    token: str
+    label: str
+    service: str
+    supported: bool
+
+
+class PackDownloadPreview(TypedDict):
+    """Article title and links available for explicit selection."""
+
+    title: str
+    choices: List[PackDownloadChoice]
+
+
+class PackJob(TypedDict):
+    """Saved job ownership, progress and status returned by the API."""
+
+    id: str
+    article: str
+    title: str
+    root: str
+    folder: str
+    identity: str
+    status: str
+    message: str
+    received: int
+    total: int
+
+
+class CleanupFile(TypedDict):
+    """One relative filename and its size in a cleanup preview."""
+
+    path: str
+    size: int
+
+
+class CleanupPreview(TypedDict):
+    """Expiring confirmation token and the exact files proposed for removal."""
+
+    token: str
+    files: List[CleanupFile]
+    bytes: int
+
+
+# Path, filesystem identity (device, inode, size, mtime, ctime), directory flag.
+FileIdentity = Tuple[int, int, int, int, int]
+CleanupInventory = List[Tuple[str, FileIdentity, bool]]
+
+
 def has_active_download() -> bool:
     """Return whether a pack download or extraction is active in this process.
 
@@ -43,7 +102,12 @@ def has_active_download() -> bool:
         return bool(_ACTIVE)
 
 
-def article_url(value):
+def article_url(value: object) -> str:
+    """Return a canonical HTTPS GetComics article URL.
+
+    Raises:
+        InvalidKeyValue: The URL has an unsupported host, scheme or path.
+    """
     if not isinstance(value, str):
         raise InvalidKeyValue('url', 'Enter a GetComics article URL')
     try:
@@ -58,7 +122,16 @@ def article_url(value):
     return urlunsplit(('https', 'getcomics.org', url.path.rstrip('/') + '/', '', ''))
 
 
-def preview(value):
+def preview(value: object) -> PackDownloadPreview:
+    """Fetch article links and issue expiring tokens for explicit selection.
+
+    Raises:
+        InvalidKeyValue: The URL or article download section is invalid.
+        requests.RequestException: Fetching the article fails.
+
+    Returns:
+        The article title and labelled provider choices with preview tokens.
+    """
     article = article_url(value)
     with Session() as session:
         response = session.get(article)
@@ -69,7 +142,8 @@ def preview(value):
     if body is None:
         raise InvalidKeyValue('url', 'No GetComics article download section found')
     title = _get_title(soup) or 'GetComics pack'
-    choices, seen = [], set()
+    choices: List[PackDownloadChoice] = []
+    seen = set()
     groups = _extract_button_links(body, False) + _extract_list_links(body, False)
     labels = {link: group['web_sub_title'] for group in groups
               for links in group['links'].values() for link in links}
@@ -97,7 +171,8 @@ def preview(value):
     return dict(title=title, choices=choices)
 
 
-def listing():
+def listing() -> List[PackJob]:
+    """List the latest 100 jobs, marking interrupted workers as held."""
     with _LOCK:
         cursor = get_db()
         for row in cursor.execute("SELECT id FROM pack_downloads WHERE status IN ('downloading','extracting')").fetchall():
@@ -107,7 +182,12 @@ def listing():
         return cursor.execute('SELECT * FROM pack_downloads ORDER BY rowid DESC LIMIT 100').fetchalldict()
 
 
-def download_root(folder):
+def download_root(folder: object) -> Path:
+    """Validate an inbox root that is outside all existing managed pack jobs.
+
+    Raises:
+        InvalidKeyValue: The folder is unsafe or nested inside a prior job.
+    """
     root = valid_root(folder)
     for row in get_db().execute('SELECT folder FROM pack_downloads').fetchall():
         managed = Path(row[0])
@@ -116,7 +196,17 @@ def download_root(folder):
     return root
 
 
-def start(token, folder):
+def start(token: object, folder: object) -> PackJobResult:
+    """Persist a selected pack job and start its isolated download worker.
+
+    Raises:
+        InvalidKeyValue: The preview expired, the provider is unsupported,
+            another job is active, the link was submitted or the root is invalid.
+        Exception: Worker startup fails; the saved job is marked held.
+
+    Returns:
+        The new job ID. A saved job is never silently submitted again.
+    """
     root = download_root(folder)
     with _LOCK:
         item = _PREVIEWS.get(token) if isinstance(token, str) else None
@@ -151,15 +241,26 @@ def start(token, folder):
     return dict(id=ident)
 
 
-def _update(ident, **values):
+def _update(ident: str, **values: Any) -> None:
+    """Commit trusted internal job fields and progress values."""
     cursor = get_db()
     cursor.execute('UPDATE pack_downloads SET ' + ','.join(key + '=?' for key in values) + ' WHERE id=?',
                    (*values.values(), ident))
     cursor.connection.commit()
 
 
-def extract_zip(archive, destination):
-    """Extract one outer ZIP, keeping comic archives intact and rejecting unsafe paths."""
+def extract_zip(archive: Path, destination: Path) -> None:
+    """Extract an outer ZIP into a new folder, keeping comic archives intact.
+
+    Args:
+        archive: Completed outer ZIP payload.
+        destination: New extraction directory whose parent already exists.
+
+    Raises:
+        ValueError: Entries are unsafe or exceed size, count or space limits.
+        OSError: Reading or writing fails; partial output is retained.
+        zipfile.BadZipFile: The archive cannot be read or verified.
+    """
     with ZipFile(archive) as source:
         members = source.infolist()
         if len(members) > MAX_MEMBERS or sum(m.file_size for m in members) > MAX_BYTES:
@@ -185,7 +286,12 @@ def extract_zip(archive, destination):
                     copyfileobj(incoming, outgoing)
 
 
-def _worker(ident, item, destination):
+def _worker(ident: str, item: Dict[str, Any], destination: Path) -> None:
+    """Download and extract one selected HTTP pack inside a database thread.
+
+    Failures retain payloads and mark the job held. The active-job reservation
+    is always released; no automatic retry is attempted.
+    """
     try:
         link, identifier = run(_purify_link(item['service'], item['link']))
         if identifier not in HTTP_CLIENTS:
@@ -238,7 +344,8 @@ def _worker(ident, item, destination):
 _CLEANUPS = {}
 
 
-def _pack_for_cleanup(ident):
+def _pack_for_cleanup(ident: object) -> Path:
+    """Validate job ownership and return a folder eligible for cleanup."""
     if not isinstance(ident, str):
         raise InvalidKeyValue('pack', 'Choose a pack job')
     row = get_db().execute('SELECT * FROM pack_downloads WHERE id=?', (ident,)).fetchone()
@@ -258,10 +365,12 @@ def _pack_for_cleanup(ident):
     return folder
 
 
-def _inventory(folder):
+def _inventory(folder: Path) -> CleanupInventory:
+    """Snapshot regular files and directories, rejecting unsafe entries."""
     import os
-    result = []
-    def unreadable(error):
+    result: CleanupInventory = []
+
+    def unreadable(error: OSError) -> None:
         raise InvalidKeyValue('pack', 'Cannot read the complete pack folder; review permissions')
     for directory, dirs, files in os.walk(folder, followlinks=False, onerror=unreadable):
         for path in [Path(directory)] + [Path(directory) / name for name in files]:
@@ -278,9 +387,15 @@ def _inventory(folder):
     return sorted(result)
 
 
-def cleanup_preview(ident):
-    from backend.features.pack_inbox import _LOCK as inbox_lock
-    with inbox_lock, _LOCK:
+def cleanup_preview(ident: object) -> CleanupPreview:
+    """Snapshot remaining job files and create a 15-minute confirmation token.
+
+    Raises:
+        InvalidKeyValue: The job is active, nested, unsafe or has an interrupted
+            import that requires review.
+        OSError: The filesystem cannot be inspected.
+    """
+    with inbox_operation(), _LOCK:
         folder = _pack_for_cleanup(ident)
         inventory = _inventory(folder)
         token = uuid4().hex
@@ -293,9 +408,21 @@ def cleanup_preview(ident):
         return dict(token=token, files=files, bytes=sum(f['size'] for f in files))
 
 
-def cleanup_confirm(token, confirmed):
-    from backend.features.pack_inbox import _LOCK as inbox_lock
-    with inbox_lock, _LOCK:
+def cleanup_confirm(token: object, confirmed: object) -> PackJobResult:
+    """Delete only the files from a current, explicitly confirmed preview.
+
+    Locks imports before download jobs, revalidates the inventory, and retains
+    remaining files if cleanup fails. Imported library copies are never deleted.
+
+    Raises:
+        InvalidKeyValue: Confirmation is absent, expired or invalidated, or
+            cleanup cannot safely complete.
+        OSError: The pre-deletion filesystem inspection fails.
+
+    Returns:
+        The finished job ID; its history remains to prevent repeat downloads.
+    """
+    with inbox_operation(), _LOCK:
         preview = _CLEANUPS.pop(token, None) if isinstance(token, str) else None
         if confirmed is not True or preview is None or monotonic() - preview[0] > 900:
             raise InvalidKeyValue('cleanup', 'Confirm a current cleanup preview')
