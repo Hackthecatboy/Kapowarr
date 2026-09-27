@@ -8,7 +8,7 @@ from os import stat
 from typing import Dict, Iterable, List, Union
 
 from backend.base.custom_exceptions import FileNotFound
-from backend.base.definitions import (FileData, GeneralFileData,
+from backend.base.definitions import (FileData, GeneralFileData, PackJob,
                                       PackRelease, PackSubscription)
 from backend.base.helpers import first_of_subarrays
 from backend.base.logging import LOGGER
@@ -397,9 +397,113 @@ class PackSubscriptionsDB:
             (status, message, ident, article)
         )
 
+
+
+class PackDownloadsDB:
+    """Download-job persistence; callers retain commit and lock ownership."""
+
+    @staticmethod
+    def fetch() -> List[PackJob]:
+        """Return the most recent 100 jobs, including finished history."""
+        return get_db().execute(
+            'SELECT * FROM pack_downloads ORDER BY rowid DESC LIMIT 100'
+        ).fetchalldict()
+
+    @staticmethod
+    def get(ident: str) -> Union[PackJob, None]:
+        """Return one job, or None when its identity is unknown."""
+        row = get_db().execute(
+            'SELECT * FROM pack_downloads WHERE id=?', (ident,)
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+    @staticmethod
+    def active_ids() -> List[str]:
+        """Return persisted downloading/extracting IDs for restart recovery."""
+        return [row[0] for row in get_db().execute(
+            "SELECT id FROM pack_downloads "
+            "WHERE status IN ('downloading','extracting')"
+        ).fetchall()]
+
+    @staticmethod
+    def folders(exclude_id: Union[str, None] = None) -> List[str]:
+        """Return all managed folders, optionally excluding one job."""
+        if exclude_id is None:
+            rows = get_db().execute('SELECT folder FROM pack_downloads').fetchall()
+        else:
+            rows = get_db().execute(
+                'SELECT folder FROM pack_downloads WHERE id != ?', (exclude_id,)
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    @staticmethod
+    def has_identity(identity: str) -> bool:
+        """Check whether a particular article/mirror has already been submitted."""
+        return get_db().execute(
+            'SELECT 1 FROM pack_downloads WHERE identity=?', (identity,)
+        ).fetchone() is not None
+
     @staticmethod
     def article_has_download(article: str) -> bool:
-        """Check for any saved download, including held and finished jobs."""
+        """Check for any saved job, including held and finished jobs."""
         return get_db().execute(
             'SELECT 1 FROM pack_downloads WHERE article=?', (article,)
         ).fetchone() is not None
+
+    @staticmethod
+    def add(ident: str, article: str, title: str, root: str,
+            folder: str, identity: str) -> None:
+        """Insert a downloading job before its worker is started."""
+        get_db().execute(
+            'INSERT INTO pack_downloads(id,article,title,root,folder,identity,'
+            "status) VALUES(?,?,?,?,?,?,'downloading')",
+            (ident, article, title, root, folder, identity)
+        )
+
+    @staticmethod
+    def update(ident: str, *, status: Union[str, None] = None,
+               message: Union[str, None] = None,
+               received: Union[int, None] = None,
+               total: Union[int, None] = None) -> None:
+        """Update supplied progress/status fields without changing job ownership."""
+        values = {
+            key: value for key, value in (
+                ('status', status), ('message', message),
+                ('received', received), ('total', total)
+            ) if value is not None
+        }
+        if values:
+            get_db().execute(
+                'UPDATE pack_downloads SET '
+                + ','.join(key + '=?' for key in values) + ' WHERE id=?',
+                (*values.values(), ident)
+            )
+
+
+class PackInboxDB:
+    """Import journal queries used during managed-pack cleanup.
+
+    Callers own commits and perform filesystem validation before mutations.
+    """
+
+    @staticmethod
+    def importing_paths() -> List[Dict[str, str]]:
+        """Return paths whose import was started but not finalized."""
+        return get_db().execute(
+            "SELECT root,relative_path FROM pack_inbox WHERE status='importing'"
+        ).fetchalldict()
+
+    @staticmethod
+    def cleanup_records() -> List[Dict[str, str]]:
+        """Return path/status records for determining which pack rows to discard."""
+        return get_db().execute(
+            'SELECT token,root,relative_path,status FROM pack_inbox'
+        ).fetchalldict()
+
+    @staticmethod
+    def discard(token: str) -> None:
+        """Record removal of an unimported source after confirmed pack cleanup."""
+        get_db().execute(
+            "UPDATE pack_inbox SET status='discarded',"
+            "message='Discarded when finishing pack' WHERE token=?", (token,)
+        )

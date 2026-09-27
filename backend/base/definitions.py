@@ -1993,3 +1993,18 @@ class PackSubscriptionListing(TypedDict):
 
     subscriptions: List[PackSubscription]
     releases: List[PackRelease]
+
+
+class PackJob(TypedDict):
+    """Saved job ownership, progress and status returned by the API."""
+
+    id: str
+    article: str
+    title: str
+    root: str
+    folder: str
+    identity: str
+    status: str
+    message: str
+    received: int
+    total: int

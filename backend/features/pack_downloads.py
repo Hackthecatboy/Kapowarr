@@ -14,7 +14,7 @@ from zipfile import ZipFile, is_zipfile
 from bs4 import BeautifulSoup
 
 from backend.base.custom_exceptions import InvalidKeyValue
-from backend.base.definitions import DownloadClientIdentifier as ID
+from backend.base.definitions import DownloadClientIdentifier as ID, PackJob
 from backend.base.helpers import Session
 from backend.base.logging import LOGGER
 from backend.features.pack_inbox import inbox_operation, valid_root
@@ -23,6 +23,7 @@ from backend.implementations.download_clients.base import BaseDirectDownload
 from backend.implementations.download_preppers.ddl.GetComics import (
     get_article_downloads, resolve_download_link)
 from backend.internals.db import get_db
+from backend.internals.db_models import PackDownloadsDB, PackInboxDB
 from backend.internals.server import Server
 
 _LOCK = Lock()
@@ -56,19 +57,6 @@ class PackDownloadPreview(TypedDict):
     choices: List[PackDownloadChoice]
 
 
-class PackJob(TypedDict):
-    """Saved job ownership, progress and status returned by the API."""
-
-    id: str
-    article: str
-    title: str
-    root: str
-    folder: str
-    identity: str
-    status: str
-    message: str
-    received: int
-    total: int
 
 
 class CleanupFile(TypedDict):
@@ -164,11 +152,15 @@ def listing() -> List[PackJob]:
     """List the latest 100 jobs, marking interrupted workers as held."""
     with _LOCK:
         cursor = get_db()
-        for row in cursor.execute("SELECT id FROM pack_downloads WHERE status IN ('downloading','extracting')").fetchall():
-            if row['id'] not in _ACTIVE:
-                cursor.execute("UPDATE pack_downloads SET status='held', message='Interrupted download or extraction; retained files require review. No automatic retry.' WHERE id=?", (row['id'],))
+        for ident in PackDownloadsDB.active_ids():
+            if ident not in _ACTIVE:
+                PackDownloadsDB.update(
+                    ident, status='held',
+                    message='Interrupted download or extraction; retained files '
+                    'require review. No automatic retry.'
+                )
         cursor.connection.commit()
-        return cursor.execute('SELECT * FROM pack_downloads ORDER BY rowid DESC LIMIT 100').fetchalldict()
+        return PackDownloadsDB.fetch()
 
 
 def download_root(folder: object) -> Path:
@@ -178,8 +170,8 @@ def download_root(folder: object) -> Path:
         InvalidKeyValue: The folder is unsafe or nested inside a prior job.
     """
     root = valid_root(folder)
-    for row in get_db().execute('SELECT folder FROM pack_downloads').fetchall():
-        managed = Path(row[0])
+    for folder_path in PackDownloadsDB.folders():
+        managed = Path(folder_path)
         if root == managed or managed in root.parents:
             raise InvalidKeyValue('folder', 'Choose the inbox root, not a previous pack job or its ready folder')
     return root
@@ -207,7 +199,7 @@ def start(token: object, folder: object) -> PackJobResult:
             raise InvalidKeyValue('download', 'Wait for the current pack download to finish')
         identity = sha256((item['article'] + '\n' + item['link']).encode()).hexdigest()
         cursor = get_db()
-        if cursor.execute('SELECT 1 FROM pack_downloads WHERE identity=?', (identity,)).fetchone():
+        if PackDownloadsDB.has_identity(identity):
             raise InvalidKeyValue('download', 'This link was already submitted; inspect its saved job')
         ident = uuid4().hex
         destination = root / ('Pack-' + ident)
@@ -215,8 +207,10 @@ def start(token: object, folder: object) -> PackJobResult:
             destination.mkdir()  # Requires a writable inbox; never reuse a folder.
         except OSError:
             raise InvalidKeyValue('folder', 'Inbox must be writable to download packs')
-        cursor.execute("INSERT INTO pack_downloads(id,article,title,root,folder,identity,status) VALUES(?,?,?,?,?,?,'downloading')",
-                       (ident, item['article'], item['title'], str(root), str(destination), identity))
+        PackDownloadsDB.add(
+            ident, item['article'], item['title'], str(root),
+            str(destination), identity
+        )
         cursor.connection.commit()
         _ACTIVE.add(ident)
         try:
@@ -224,7 +218,10 @@ def start(token: object, folder: object) -> PackJobResult:
                                    name='PackDownload-' + ident).start()
         except Exception:
             _ACTIVE.discard(ident)
-            cursor.execute("UPDATE pack_downloads SET status='held',message='Could not start worker; no automatic retry' WHERE id=?", (ident,))
+            PackDownloadsDB.update(
+                ident, status='held',
+                message='Could not start worker; no automatic retry'
+            )
             cursor.connection.commit()
             raise
     return dict(id=ident)
@@ -233,8 +230,7 @@ def start(token: object, folder: object) -> PackJobResult:
 def _update(ident: str, **values: Any) -> None:
     """Commit trusted internal job fields and progress values."""
     cursor = get_db()
-    cursor.execute('UPDATE pack_downloads SET ' + ','.join(key + '=?' for key in values) + ' WHERE id=?',
-                   (*values.values(), ident))
+    PackDownloadsDB.update(ident, **values)
     cursor.connection.commit()
 
 
@@ -333,17 +329,17 @@ def _pack_for_cleanup(ident: object) -> Path:
     """Validate job ownership and return a folder eligible for cleanup."""
     if not isinstance(ident, str):
         raise InvalidKeyValue('pack', 'Choose a pack job')
-    row = get_db().execute('SELECT * FROM pack_downloads WHERE id=?', (ident,)).fetchone()
+    row = PackDownloadsDB.get(ident)
     if row is None or ident in _ACTIVE or row['status'] not in ('ready', 'held'):
         raise InvalidKeyValue('pack', 'Only completed or held packs can be finished')
     root = valid_root(row['root'])
     folder = Path(row['folder'])
     if folder != root / ('Pack-' + ident) or any(p.is_symlink() for p in (folder, *folder.parents)):
         raise InvalidKeyValue('pack', 'Pack folder changed; review required')
-    for other in get_db().execute('SELECT folder FROM pack_downloads WHERE id != ?', (ident,)).fetchall():
-        if folder in Path(other[0]).parents:
+    for other in PackDownloadsDB.folders(exclude_id=ident):
+        if folder in Path(other).parents:
             raise InvalidKeyValue('pack', 'Another pack job is nested inside this folder; review manually')
-    for item in get_db().execute("SELECT root,relative_path FROM pack_inbox WHERE status='importing'").fetchall():
+    for item in PackInboxDB.importing_paths():
         source = Path(item['root']) / item['relative_path']
         if folder in source.parents:
             raise InvalidKeyValue('pack', 'An interrupted import needs review before finishing this pack')
@@ -432,9 +428,9 @@ def cleanup_confirm(token: object, confirmed: object) -> PackJobResult:
             _update(ident, status='held', message='Cleanup incomplete; preview remaining files again. Library imports are untouched.')
             raise InvalidKeyValue('cleanup', 'Cleanup incomplete; inspect remaining files and preview again')
         cursor = get_db()
-        for row in cursor.execute('SELECT token,root,relative_path,status FROM pack_inbox').fetchall():
+        for row in PackInboxDB.cleanup_records():
             if folder in (Path(row['root']) / row['relative_path']).parents and row['status'] != 'imported':
-                cursor.execute("UPDATE pack_inbox SET status='discarded',message='Discarded when finishing pack' WHERE token=?", (row['token'],))
+                PackInboxDB.discard(row['token'])
         cursor.connection.commit()
         _update(ident, status='finished', message='Archive and remaining extracted files deleted by request. Library imports preserved.')
         return dict(id=ident)

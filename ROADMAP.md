@@ -163,8 +163,10 @@ Kapowarr architecture. Complete and verify each slice separately.
    part of container testing.
 2. **Database organization (in progress):** subscription and release SQL now
    lives in `PackSubscriptionsDB`, with shared record types in `base/definitions`
-   and unchanged workflow-owned commit boundaries. Next: download-job and import
-   journal persistence, preserving filesystem recovery and transaction ordering.
+   and unchanged workflow-owned commit boundaries. Download jobs now use
+   `PackDownloadsDB`; managed-pack cleanup uses `PackInboxDB` journal queries.
+   Next: the remaining import-journal and matching queries, preserving filesystem
+   recovery and transaction ordering.
 3. **Smaller workflow functions:** split subscription checking and importing
    into named stages while retaining transaction, recovery and lock boundaries.
 4. **Remaining types and formatting:** replace internal `Any` dictionaries where

@@ -11,7 +11,7 @@ from backend.base.helpers import Session
 from backend.base.logging import LOGGER
 from backend.features import pack_downloads as downloads
 from backend.internals.db import get_db
-from backend.internals.db_models import PackSubscriptionsDB
+from backend.internals.db_models import PackDownloadsDB, PackSubscriptionsDB
 
 SERVICES = ('GetComics', 'MediaFire', 'WeTransfer', 'Pixeldrain')
 
@@ -259,7 +259,7 @@ def check(force: bool = False) -> None:
             pending = PackSubscriptionsDB.pending(subscription['id'])
             for release in pending:
                 article = release['article']
-                if PackSubscriptionsDB.article_has_download(article):
+                if PackDownloadsDB.article_has_download(article):
                     _release_status(
                         subscription['id'],
                         article, 'tracked',

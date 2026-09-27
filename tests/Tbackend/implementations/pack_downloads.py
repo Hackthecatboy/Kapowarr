@@ -23,6 +23,8 @@ class PackDownloads(unittest.TestCase):
         for module in ('pack_downloads', 'pack_inbox'):
             mock = patch('backend.features.' + module + '.get_db', return_value=self.cursor)
             mock.start(); self.addCleanup(mock.stop)
+        model = patch('backend.internals.db_models.get_db', return_value=self.cursor)
+        model.start(); self.addCleanup(model.stop)
         blocklist = patch('backend.implementations.blocklist.get_db', return_value=self.cursor)
         blocklist.start(); self.addCleanup(blocklist.stop)
         packs._ACTIVE.clear(); packs._PREVIEWS.clear()
@@ -157,3 +159,26 @@ class PackDownloads(unittest.TestCase):
         self.assertEqual(links[1]['service'], GCDownloadService.MEGA)
         with self.assertRaises(ValueError):
             get_article_downloads(BeautifulSoup('<h1>No links</h1>', 'html.parser'))
+
+    def test_job_model_preserves_transactions_and_zero_progress(self):
+        from backend.internals.db_models import PackDownloadsDB
+        PackDownloadsDB.add('job', 'article', 'Pack', str(self.root),
+                            str(self.root / 'Pack-job'), 'identity')
+        self.assertEqual(PackDownloadsDB.active_ids(), ['job'])
+        self.db.rollback()
+        self.assertIsNone(PackDownloadsDB.get('job'))
+        PackDownloadsDB.add('job', 'article', 'Pack', str(self.root),
+                            str(self.root / 'Pack-job'), 'identity')
+        self.db.commit()
+        PackDownloadsDB.update('job', status='ready', received=10, total=10)
+        self.db.rollback()
+        self.assertEqual(PackDownloadsDB.get('job')['status'], 'downloading')
+        PackDownloadsDB.update('job', status='finished', message='',
+                               received=0, total=0)
+        self.db.commit()
+        row = PackDownloadsDB.get('job')
+        self.assertEqual((row['received'], row['total'], row['message']), (0, 0, ''))
+        self.assertTrue(PackDownloadsDB.has_identity('identity'))
+        self.assertTrue(PackDownloadsDB.article_has_download('article'))
+        self.assertEqual(PackDownloadsDB.active_ids(), [])
+        self.assertEqual(PackDownloadsDB.folders(exclude_id='job'), [])
