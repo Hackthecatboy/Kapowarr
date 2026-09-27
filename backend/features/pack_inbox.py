@@ -8,11 +8,11 @@ from pathlib import Path
 from sqlite3 import Row
 from threading import Lock
 from time import time
-from typing import (Any, BinaryIO, Dict, Iterator,
-                    List, Optional, Tuple, TypedDict)
+from typing import BinaryIO, Iterator, List, Optional, Tuple, TypedDict, cast
 from uuid import uuid4
 
 from backend.base.custom_exceptions import InvalidKeyValue
+from backend.base.definitions import InboxJournalEntry
 from backend.base.file_extraction import extract_filename_data
 from backend.implementations.matching import match_title
 from backend.implementations.naming import mass_rename
@@ -78,16 +78,19 @@ def valid_root(value: object) -> Path:
         InvalidKeyValue: The folder is missing, symlinked or overlaps a library.
     """
     if not isinstance(value, str) or not value.strip():
-        raise InvalidKeyValue('folder', 'Choose a completed-pack folder visible inside Kapowarr')
+        raise InvalidKeyValue(
+            'folder', 'Choose a completed-pack folder visible inside Kapowarr')
     path = Path(value)
     if not path.is_absolute() or path.is_symlink() or not path.is_dir():
-        raise InvalidKeyValue('folder', 'Use an existing absolute folder, not a symlink')
+        raise InvalidKeyValue(
+            'folder', 'Use an existing absolute folder, not a symlink')
     root = path.resolve()
     libraries = PackInboxDB.library_folders()
     for row in libraries:
         library = Path(row[0]).resolve()
         if root == library or root in library.parents or library in root.parents:
-            raise InvalidKeyValue('folder', 'Inbox and library folders must not overlap')
+            raise InvalidKeyValue(
+                'folder', 'Inbox and library folders must not overlap')
     return root
 
 
@@ -115,9 +118,11 @@ def classify(name: str) -> Tuple[Optional[Row], List[int], str]:
         a unique missing-issue match. A matched but owned edition retains its
         volume and issue IDs alongside an ownership reason.
     """
-    data = extract_filename_data(name, assume_volume_number=False, fix_year=True)
+    data = extract_filename_data(
+        name, assume_volume_number=False, fix_year=True)
     number = data['issue_number']
-    standalone = number is None and data['special_version'] in (None, 'tpb', 'one-shot', 'hard-cover', 'omnibus')
+    standalone = number is None and data['special_version'] in (
+        None, 'tpb', 'one-shot', 'hard-cover', 'omnibus')
     if (number is None and not standalone) or (number is not None and data['special_version']):
         return None, [], 'No explicit ordinary issue number; review required'
     if standalone and data['year'] is None:
@@ -145,7 +150,8 @@ def classify(name: str) -> Tuple[Optional[Row], List[int], str]:
             issues = PackInboxDB.range_issues(volume['id'], *bounds)
             if not issues or issues[0]['calculated_issue_number'] != bounds[0] or issues[-1]['calculated_issue_number'] != bounds[1]:
                 continue
-        years = {volume['year']} | {int(i['date'][:4]) for i in issues if i['date'] and i['date'][:4].isdigit()}
+        years = {volume['year']} | {
+            int(i['date'][:4]) for i in issues if i['date'] and i['date'][:4].isdigit()}
         if data['year'] is not None and data['year'] not in years:
             continue
         candidates.append((volume, [i['id'] for i in issues]))
@@ -166,7 +172,7 @@ def _managed_source(source: Path) -> Optional[Path]:
     return None
 
 
-def _cleanup_imported(row: Dict[str, Any]) -> None:
+def _cleanup_imported(row: InboxJournalEntry) -> None:
     """Delete a managed extracted source only after verifying its library copy.
 
     The row is the committed import journal record. External sources remain
@@ -179,28 +185,35 @@ def _cleanup_imported(row: Dict[str, Any]) -> None:
     if ready is None:
         return  # External inboxes may be torrent-managed or read-only.
     try:
-        source = safe_source(valid_root(str(ready)), str(source.relative_to(ready)))
+        source = safe_source(valid_root(str(ready)),
+                             str(source.relative_to(ready)))
         before = source.stat()
         if before.st_size != row['size'] or str(before.st_mtime_ns) != row['mtime']:
             raise ValueError('Source changed since import; retained for review')
         destination = Path(row['destination'])
-        record = PackInboxDB.imported_file_location(row['volume_id'], str(destination))
+        record = PackInboxDB.imported_file_location(
+            row['volume_id'], str(destination))
         if record is None or any(p.is_symlink() for p in (destination, *destination.parents)):
-            raise ValueError('Library copy missing or symlinked; source retained')
+            raise ValueError(
+                'Library copy missing or symlinked; source retained')
         if (Path(record['folder']).resolve() not in destination.resolve().parents
                 or Path(record['root']).resolve() not in destination.resolve().parents):
-            raise ValueError('Library copy moved outside its library; source retained')
+            raise ValueError(
+                'Library copy moved outside its library; source retained')
         bound = {r[0] for r in PackInboxDB.file_issue_bindings(record['id'])}
         if not set(json.loads(row['issue_ids'])).issubset(bound):
             raise ValueError('Library issue bindings changed; source retained')
         copied_before = destination.stat()
         with source.open('rb') as original, destination.open('rb') as copied:
             if _digest(original) != _digest(copied):
-                raise ValueError('Library copy differs from source; source retained')
-        def identity(value):
+                raise ValueError(
+                    'Library copy differs from source; source retained')
+
+        def identity(value: os.stat_result) -> Tuple[int, int, int, int, int]:
             return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
         if identity(source.stat()) != identity(before) or identity(destination.stat()) != identity(copied_before):
-            raise ValueError('Files changed during cleanup verification; source retained')
+            raise ValueError(
+                'Files changed during cleanup verification; source retained')
         source.unlink()
         message = 'Copied and verified; extracted source deleted'
     except (OSError, ValueError) as error:
@@ -219,7 +232,8 @@ def cleanup_selected(tokens: object) -> InboxListing:
         Updated review results, including any retained-source explanations.
     """
     if not isinstance(tokens, list) or not 1 <= len(tokens) <= 100 or any(not isinstance(t, str) for t in tokens):
-        raise InvalidKeyValue('items', 'Select between 1 and 100 imported files')
+        raise InvalidKeyValue(
+            'items', 'Select between 1 and 100 imported files')
     with inbox_operation():
         root = valid_root(Settings().sv.pack_inbox_folder)
         cursor = get_db()
@@ -227,8 +241,9 @@ def cleanup_selected(tokens: object) -> InboxListing:
         for token in dict.fromkeys(tokens):
             row = PackInboxDB.imported_selection(token, str(root))
             if row is None or _managed_source(Path(row['root']) / row['relative_path']) is None:
-                raise InvalidKeyValue('items', 'Only imported files from completed Kapowarr pack downloads can be cleaned')
-            rows.append(dict(row))
+                raise InvalidKeyValue(
+                    'items', 'Only imported files from completed Kapowarr pack downloads can be cleaned')
+            rows.append(cast(InboxJournalEntry, dict(row)))
         for row in rows:
             _cleanup_imported(row)
         return listing()
@@ -240,7 +255,8 @@ def listing() -> InboxListing:
     rows = PackInboxDB.review_rows(folder)
     for row in rows:
         source = Path(folder) / row['relative_path']
-        row['can_cleanup'] = row['status'] == 'imported' and _managed_source(source) is not None and source.is_file()
+        row['can_cleanup'] = row['status'] == 'imported' and _managed_source(
+            source) is not None and source.is_file()
         if row['status'] == 'review' and row['message'] == 'No library match':
             data = extract_filename_data(Path(row['relative_path']).name,
                                          assume_volume_number=False, fix_year=True)
@@ -263,11 +279,15 @@ def scan(folder: object) -> InboxListing:
         Settings().update({'pack_inbox_folder': str(root)})
         cursor = get_db()
         paths = []
-        unfinished = [Path(row[0]) for row in PackInboxDB.unfinished_pack_folders()]
+        unfinished = [Path(row[0])
+                      for row in PackInboxDB.unfinished_pack_folders()]
         if any(root == path or path in root.parents for path in unfinished):
-            raise InvalidKeyValue('folder', 'This pack download is unfinished or held; review it before scanning')
-        def failed(error):
-            raise InvalidKeyValue('folder', 'Cannot read part of the inbox; check permissions')
+            raise InvalidKeyValue(
+                'folder', 'This pack download is unfinished or held; review it before scanning')
+
+        def failed(error: OSError) -> None:
+            raise InvalidKeyValue(
+                'folder', 'Cannot read part of the inbox; check permissions')
         for directory, dirs, files in os.walk(root, followlinks=False, onerror=failed):
             for name in list(dirs):
                 if Path(directory) / name in unfinished:
@@ -276,9 +296,11 @@ def scan(folder: object) -> InboxListing:
                 if (Path(directory) / name).is_symlink():
                     paths.append(Path(directory) / name)
                     dirs.remove(name)
-            paths.extend(Path(directory) / name for name in files if Path(name).suffix.lower() in COMICS | ARCHIVES)
+            paths.extend(Path(
+                directory) / name for name in files if Path(name).suffix.lower() in COMICS | ARCHIVES)
             if len(paths) > 2000:
-                raise InvalidKeyValue('folder', 'Choose a smaller completed folder (maximum 2,000 files per scan)')
+                raise InvalidKeyValue(
+                    'folder', 'Choose a smaller completed folder (maximum 2,000 files per scan)')
         PackInboxDB.mark_sources_unseen(str(root))
         for path in sorted(paths):
             relative = str(path.relative_to(root))
@@ -318,7 +340,7 @@ def scan(folder: object) -> InboxListing:
 
 
 def _prepare_import(
-    root: Path, row: Dict[str, Any]
+    root: Path, row: InboxJournalEntry
 ) -> Tuple[Path, os.stat_result, Row, List[int], Path]:
     """Revalidate the source, match and destination before journaling a copy."""
     source = safe_source(root, row['relative_path'])
@@ -331,7 +353,8 @@ def _prepare_import(
     library = Path(volume['folder'])
     if not library.is_absolute() or library.is_symlink():
         raise ValueError('Library destination requires review')
-    destination = library.resolve() / ('Pack-Inbox-' + row['token']) / source.name
+    destination = library.resolve() / ('Pack-Inbox-' +
+                                       row['token']) / source.name
     return source, before, volume, ids, destination
 
 
@@ -356,8 +379,9 @@ def _copy_verified(
         outgoing.flush()
         os.fsync(outgoing.fileno())
     after = source.stat()
-    if (before.st_ino,before.st_size,before.st_mtime_ns) != (after.st_ino,after.st_size,after.st_mtime_ns):
-        raise ValueError('Source changed during copy; inspect the retained library copy')
+    if (before.st_ino, before.st_size, before.st_mtime_ns) != (after.st_ino, after.st_size, after.st_mtime_ns):
+        raise ValueError(
+            'Source changed during copy; inspect the retained library copy')
     with destination.open('rb') as copied:
         if _digest(copied) != digest.hexdigest():
             raise ValueError('Copy checksum mismatch; review required')
@@ -372,7 +396,8 @@ def _bind_verified(
     """
     cursor.execute('BEGIN IMMEDIATE')
     if any(PackInboxDB.existing_issue_file(i) for i in ids):
-        raise ValueError('An issue was imported elsewhere during copying; review the retained copy')
+        raise ValueError(
+            'An issue was imported elsewhere during copying; review the retained copy')
     # Explicit verified issue bindings preserve this match during rescans.
     file_id = PackInboxDB.add_library_file(str(destination), size)
     PackInboxDB.bind_imported_issues([(file_id, i) for i in ids])
@@ -380,24 +405,25 @@ def _bind_verified(
 
 
 def _finish_import(
-    row: Dict[str, Any], volume: Row, destination: Path, cursor: KapowarrCursor
+    row: InboxJournalEntry, volume: Row, destination: Path, cursor: KapowarrCursor
 ) -> None:
     """Rename if configured, commit completion, then verify source cleanup."""
     if Settings().sv.rename_downloaded_files:
         renamed = mass_rename(volume['id'], filepath_filter=[str(destination)],
                               process_individual_files=False, keep_volume_folder=True)
         if len(renamed) != 1:
-            raise ValueError('Renaming did not return the imported file; inspect library')
+            raise ValueError(
+                'Renaming did not return the imported file; inspect library')
         destination = Path(renamed[0])
         PackInboxDB.set_destination(str(destination), row['token'])
     PackInboxDB.mark_imported(row['token'])
     cursor.connection.commit()
     imported = PackInboxDB.journal_entry(row['token'])
-    _cleanup_imported(dict(imported))
+    _cleanup_imported(cast(InboxJournalEntry, dict(imported)))
 
 
 def _import_one(
-    root: Path, row: Dict[str, Any], cursor: KapowarrCursor
+    root: Path, row: InboxJournalEntry, cursor: KapowarrCursor
 ) -> None:
     """Run one import and preserve review versus held failure semantics.
 
@@ -416,7 +442,8 @@ def _import_one(
         _finish_import(row, volume, destination, cursor)
     except Exception as error:
         cursor.connection.rollback()
-        PackInboxDB.set_state('held' if copying else 'review', str(error), row['token'])
+        PackInboxDB.set_state(
+            'held' if copying else 'review', str(error), row['token'])
         cursor.connection.commit()
 
 
@@ -442,8 +469,9 @@ def import_selected(tokens: object) -> InboxListing:
         for token in dict.fromkeys(tokens):
             row = PackInboxDB.matched_selection(token, str(root))
             if row is None:
-                raise InvalidKeyValue('items', 'Preview changed or item cannot be imported; scan again')
-            rows.append(dict(row))
+                raise InvalidKeyValue(
+                    'items', 'Preview changed or item cannot be imported; scan again')
+            rows.append(cast(InboxJournalEntry, dict(row)))
         for row in rows:
             _import_one(root, row, cursor)
         return listing()

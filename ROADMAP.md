@@ -170,7 +170,10 @@ Kapowarr architecture. Complete and verify each slice separately.
    checks now separate schedule claiming, article discovery and pending-release
    processing. Imports separate validation, verified copying, issue binding and
    completion, with the original batch lock, commits and per-file hold handling.
-4. **Remaining types and formatting:** replace internal `Any` dictionaries where
-   practical and clean up long statements using project conventions.
+4. **Remaining types and formatting (complete; locally verified):** preview
+   tokens and import journal records use named types; progress updates have
+   explicit fields. Applied conservative formatting and sorted imports while
+   preserving Python 3.8 syntax and existing message strings. Unvalidated API
+   input remains permissively typed until runtime validation.
 5. **Repeatable frontend tests:** move the temporary UI regression checks into
    the repository with documented setup and execution.

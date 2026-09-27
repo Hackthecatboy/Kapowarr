@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 from shutil import copyfileobj, disk_usage
 from threading import Lock
 from time import monotonic
-from typing import Any, Dict, List, Tuple, TypedDict
+from typing import Dict, List, Optional, Set, Tuple, TypedDict, cast
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 from zipfile import ZipFile, is_zipfile
@@ -14,7 +14,8 @@ from zipfile import ZipFile, is_zipfile
 from bs4 import BeautifulSoup
 
 from backend.base.custom_exceptions import InvalidKeyValue
-from backend.base.definitions import DownloadClientIdentifier as ID, PackJob
+from backend.base.definitions import (DownloadClientIdentifier as ID,
+                                      GCDownloadService, PackJob)
 from backend.base.helpers import Session
 from backend.base.logging import LOGGER
 from backend.features.pack_inbox import inbox_operation, valid_root
@@ -27,12 +28,22 @@ from backend.internals.db_models import PackDownloadsDB, PackInboxDB
 from backend.internals.server import Server
 
 _LOCK = Lock()
-_PREVIEWS = {}
-_ACTIVE = set()
+_PREVIEWS: Dict[str, "PackLinkPreview"] = {}
+_ACTIVE: Set[str] = set()
 MAX_BYTES = 50 * 1024 ** 3
 MAX_MEMBERS = 2000
 HTTP_CLIENTS = {ID.DDL, ID.MEDIAFIRE, ID.WETRANSFER, ID.PIXELDRAIN,
                 ID.MEDIAFIRE_FOLDER, ID.PIXELDRAIN_FOLDER}
+
+
+class PackLinkPreview(TypedDict):
+    """Validated provider link and monotonic token-creation timestamp."""
+
+    created: float
+    article: str
+    title: str
+    link: str
+    service: GCDownloadService
 
 
 class PackJobResult(TypedDict):
@@ -55,8 +66,6 @@ class PackDownloadPreview(TypedDict):
 
     title: str
     choices: List[PackDownloadChoice]
-
-
 
 
 class CleanupFile(TypedDict):
@@ -173,7 +182,8 @@ def download_root(folder: object) -> Path:
     for folder_path in PackDownloadsDB.folders():
         managed = Path(folder_path)
         if root == managed or managed in root.parents:
-            raise InvalidKeyValue('folder', 'Choose the inbox root, not a previous pack job or its ready folder')
+            raise InvalidKeyValue(
+                'folder', 'Choose the inbox root, not a previous pack job or its ready folder')
     return root
 
 
@@ -192,21 +202,28 @@ def start(token: object, folder: object) -> PackJobResult:
     with _LOCK:
         item = _PREVIEWS.get(token) if isinstance(token, str) else None
         if item is None or monotonic() - item['created'] > 900:
-            raise InvalidKeyValue('token', 'Preview expired; preview the article again')
+            raise InvalidKeyValue(
+                'token', 'Preview expired; preview the article again')
         if item['service'].value == 'Mega':
-            raise InvalidKeyValue('download', 'Choose an HTTP mirror; Mega packs are not supported yet')
+            raise InvalidKeyValue(
+                'download', 'Choose an HTTP mirror; Mega packs are not supported yet')
         if _ACTIVE:
-            raise InvalidKeyValue('download', 'Wait for the current pack download to finish')
-        identity = sha256((item['article'] + '\n' + item['link']).encode()).hexdigest()
+            raise InvalidKeyValue(
+                'download', 'Wait for the current pack download to finish')
+        identity = sha256(
+            (item['article'] + '\n' + item['link']).encode()).hexdigest()
         cursor = get_db()
         if PackDownloadsDB.has_identity(identity):
-            raise InvalidKeyValue('download', 'This link was already submitted; inspect its saved job')
+            raise InvalidKeyValue(
+                'download', 'This link was already submitted; inspect its saved job')
         ident = uuid4().hex
         destination = root / ('Pack-' + ident)
         try:
-            destination.mkdir()  # Requires a writable inbox; never reuse a folder.
+            # Requires a writable inbox; never reuse a folder.
+            destination.mkdir()
         except OSError:
-            raise InvalidKeyValue('folder', 'Inbox must be writable to download packs')
+            raise InvalidKeyValue(
+                'folder', 'Inbox must be writable to download packs')
         PackDownloadsDB.add(
             ident, item['article'], item['title'], str(root),
             str(destination), identity
@@ -214,7 +231,7 @@ def start(token: object, folder: object) -> PackJobResult:
         cursor.connection.commit()
         _ACTIVE.add(ident)
         try:
-            Server().get_db_thread(target=_worker, args=(ident, dict(item), destination),
+            Server().get_db_thread(target=_worker, args=(ident, item.copy(), destination),
                                    name='PackDownload-' + ident).start()
         except Exception:
             _ACTIVE.discard(ident)
@@ -227,10 +244,16 @@ def start(token: object, folder: object) -> PackJobResult:
     return dict(id=ident)
 
 
-def _update(ident: str, **values: Any) -> None:
+def _update(
+    ident: str, *, status: Optional[str] = None,
+    message: Optional[str] = None, received: Optional[int] = None,
+    total: Optional[int] = None
+) -> None:
     """Commit trusted internal job fields and progress values."""
     cursor = get_db()
-    PackDownloadsDB.update(ident, **values)
+    PackDownloadsDB.update(
+        ident, status=status, message=message, received=received, total=total
+    )
     cursor.connection.commit()
 
 
@@ -249,7 +272,8 @@ def extract_zip(archive: Path, destination: Path) -> None:
     with ZipFile(archive) as source:
         members = source.infolist()
         if len(members) > MAX_MEMBERS or sum(m.file_size for m in members) > MAX_BYTES:
-            raise ValueError('ZIP exceeds the 2,000-entry or 50 GiB extraction limit')
+            raise ValueError(
+                'ZIP exceeds the 2,000-entry or 50 GiB extraction limit')
         if sum(m.file_size for m in members) > disk_usage(destination.parent).free:
             raise ValueError('Insufficient free space for extracted pack')
         names = set()
@@ -258,7 +282,8 @@ def extract_zip(archive: Path, destination: Path) -> None:
             if (path.is_absolute() or '..' in path.parts or '\\' in member.filename
                     or ':' in member.filename or stat.S_ISLNK(member.external_attr >> 16)
                     or member.flag_bits & 1 or member.filename in names):
-                raise ValueError('ZIP has unsafe, duplicate or encrypted members; retained for review')
+                raise ValueError(
+                    'ZIP has unsafe, duplicate or encrypted members; retained for review')
             names.add(member.filename)
         destination.mkdir()
         for member in members:
@@ -271,16 +296,18 @@ def extract_zip(archive: Path, destination: Path) -> None:
                     copyfileobj(incoming, outgoing)
 
 
-def _worker(ident: str, item: Dict[str, Any], destination: Path) -> None:
+def _worker(ident: str, item: PackLinkPreview, destination: Path) -> None:
     """Download and extract one selected HTTP pack inside a database thread.
 
     Failures retain payloads and mark the job held. The active-job reservation
     is always released; no automatic retry is attempted.
     """
     try:
-        link, identifier = run(resolve_download_link(item['service'], item['link']))
+        link, identifier = run(resolve_download_link(
+            item['service'], item['link']))
         if identifier not in HTTP_CLIENTS:
-            raise ValueError('This pack link needs an unsupported client; use an HTTP mirror or download externally')
+            raise ValueError(
+                'This pack link needs an unsupported client; use an HTTP mirror or download externally')
         cls = DownloadClients.get_client(identifier)
         if not issubclass(cls, BaseDirectDownload):
             raise ValueError('Unsupported pack download provider')
@@ -290,10 +317,12 @@ def _worker(ident: str, item: Dict[str, Any], destination: Path) -> None:
         with cls.stream_pack(link) as response, partial.open('xb') as output:
             response.raise_for_status()
             if 'text/html' in response.headers.get('Content-Type', '').lower():
-                raise ValueError('Provider returned a web page instead of a download')
+                raise ValueError(
+                    'Provider returned a web page instead of a download')
             total = int(response.headers.get('Content-Length', '0'))
             if total > MAX_BYTES or total > disk_usage(destination).free:
-                raise ValueError('Pack exceeds available space or the 50 GiB download limit')
+                raise ValueError(
+                    'Pack exceeds available space or the 50 GiB download limit')
             _update(ident, total=total)
             for chunk in response.iter_content(1024 * 1024):
                 received += len(chunk)
@@ -316,13 +345,14 @@ def _worker(ident: str, item: Dict[str, Any], destination: Path) -> None:
         _update(ident, status='ready', message='ZIP extracted. Review in Pack Inbox; recently written files need 30 seconds before scanning. Original archive retained.')
     except Exception:
         LOGGER.exception('Pack download %s needs review', ident)
-        _update(ident, status='held', message='Download or extraction failed. Inspect System Logs and the retained folder; no automatic retry.')
+        _update(ident, status='held',
+                message='Download or extraction failed. Inspect System Logs and the retained folder; no automatic retry.')
     finally:
         with _LOCK:
             _ACTIVE.discard(ident)
 
 
-_CLEANUPS = {}
+_CLEANUPS: Dict[str, Tuple[float, str, CleanupInventory]] = {}
 
 
 def _pack_for_cleanup(ident: object) -> Path:
@@ -331,18 +361,21 @@ def _pack_for_cleanup(ident: object) -> Path:
         raise InvalidKeyValue('pack', 'Choose a pack job')
     row = PackDownloadsDB.get(ident)
     if row is None or ident in _ACTIVE or row['status'] not in ('ready', 'held'):
-        raise InvalidKeyValue('pack', 'Only completed or held packs can be finished')
+        raise InvalidKeyValue(
+            'pack', 'Only completed or held packs can be finished')
     root = valid_root(row['root'])
     folder = Path(row['folder'])
     if folder != root / ('Pack-' + ident) or any(p.is_symlink() for p in (folder, *folder.parents)):
         raise InvalidKeyValue('pack', 'Pack folder changed; review required')
     for other in PackDownloadsDB.folders(exclude_id=ident):
         if folder in Path(other).parents:
-            raise InvalidKeyValue('pack', 'Another pack job is nested inside this folder; review manually')
+            raise InvalidKeyValue(
+                'pack', 'Another pack job is nested inside this folder; review manually')
     for item in PackInboxDB.importing_paths():
         source = Path(item['root']) / item['relative_path']
         if folder in source.parents:
-            raise InvalidKeyValue('pack', 'An interrupted import needs review before finishing this pack')
+            raise InvalidKeyValue(
+                'pack', 'An interrupted import needs review before finishing this pack')
     return folder
 
 
@@ -352,17 +385,22 @@ def _inventory(folder: Path) -> CleanupInventory:
     result: CleanupInventory = []
 
     def unreadable(error: OSError) -> None:
-        raise InvalidKeyValue('pack', 'Cannot read the complete pack folder; review permissions')
+        raise InvalidKeyValue(
+            'pack', 'Cannot read the complete pack folder; review permissions')
     for directory, dirs, files in os.walk(folder, followlinks=False, onerror=unreadable):
         for path in [Path(directory)] + [Path(directory) / name for name in files]:
             info = path.lstat()
             if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
-                raise InvalidKeyValue('pack', 'Special files or symlinks require manual review')
-            result.append((str(path), (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns), path.is_dir()))
+                raise InvalidKeyValue(
+                    'pack', 'Special files or symlinks require manual review')
+            result.append((str(path), (info.st_dev, info.st_ino, info.st_size,
+                          info.st_mtime_ns, info.st_ctime_ns), path.is_dir()))
         if any((Path(directory) / name).is_symlink() for name in dirs):
-            raise InvalidKeyValue('pack', 'Symlinked folders require manual review')
+            raise InvalidKeyValue(
+                'pack', 'Symlinked folders require manual review')
         if len(result) > 5000:
-            raise InvalidKeyValue('pack', 'Too many files for one cleanup; review manually')
+            raise InvalidKeyValue(
+                'pack', 'Too many files for one cleanup; review manually')
     if not result:
         raise InvalidKeyValue('pack', 'Pack folder is unavailable')
     return sorted(result)
@@ -383,7 +421,7 @@ def cleanup_preview(ident: object) -> CleanupPreview:
         for old, entry in list(_CLEANUPS.items()):
             if monotonic() - entry[0] > 900:
                 del _CLEANUPS[old]
-        _CLEANUPS[token] = (monotonic(), ident, inventory)
+        _CLEANUPS[token] = (monotonic(), cast(str, ident), inventory)
         files = [dict(path=str(Path(path).relative_to(folder)), size=info[2])
                  for path, info, directory in inventory if not directory]
         return dict(token=token, files=files, bytes=sum(f['size'] for f in files))
@@ -406,11 +444,13 @@ def cleanup_confirm(token: object, confirmed: object) -> PackJobResult:
     with inbox_operation(), _LOCK:
         preview = _CLEANUPS.pop(token, None) if isinstance(token, str) else None
         if confirmed is not True or preview is None or monotonic() - preview[0] > 900:
-            raise InvalidKeyValue('cleanup', 'Confirm a current cleanup preview')
+            raise InvalidKeyValue(
+                'cleanup', 'Confirm a current cleanup preview')
         _, ident, inventory = preview
         folder = _pack_for_cleanup(ident)
         if _inventory(folder) != inventory:
-            raise InvalidKeyValue('cleanup', 'Pack files changed; preview cleanup again')
+            raise InvalidKeyValue(
+                'cleanup', 'Pack files changed; preview cleanup again')
         try:
             for path, before, directory in inventory:
                 if directory:
@@ -418,19 +458,23 @@ def cleanup_confirm(token: object, confirmed: object) -> PackJobResult:
                 item = Path(path)
                 info = item.lstat()
                 if (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns) != before or item.is_symlink():
-                    raise ValueError('Pack changed during cleanup; remaining files retained')
+                    raise ValueError(
+                        'Pack changed during cleanup; remaining files retained')
                 item.unlink()
             for path, _, directory in sorted(inventory, key=lambda item: len(Path(item[0]).parts), reverse=True):
                 if directory:
                     Path(path).rmdir()
         except (OSError, ValueError):
             LOGGER.exception('Pack %s cleanup incomplete', ident)
-            _update(ident, status='held', message='Cleanup incomplete; preview remaining files again. Library imports are untouched.')
-            raise InvalidKeyValue('cleanup', 'Cleanup incomplete; inspect remaining files and preview again')
+            _update(ident, status='held',
+                    message='Cleanup incomplete; preview remaining files again. Library imports are untouched.')
+            raise InvalidKeyValue(
+                'cleanup', 'Cleanup incomplete; inspect remaining files and preview again')
         cursor = get_db()
         for row in PackInboxDB.cleanup_records():
             if folder in (Path(row['root']) / row['relative_path']).parents and row['status'] != 'imported':
                 PackInboxDB.discard(row['token'])
         cursor.connection.commit()
-        _update(ident, status='finished', message='Archive and remaining extracted files deleted by request. Library imports preserved.')
+        _update(ident, status='finished',
+                message='Archive and remaining extracted files deleted by request. Library imports preserved.')
         return dict(id=ident)

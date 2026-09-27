@@ -31,8 +31,6 @@ class PackSearchResult(TypedDict):
     has_more: bool
 
 
-
-
 def search(query: object, page: object = 1) -> PackSearchResult:
     """Search a bounded page of GetComics articles.
 
@@ -127,7 +125,8 @@ def create(data: Mapping[str, Any]) -> PackSubscriptionListing:
         raise InvalidKeyValue('subscription', 'Maximum 20 subscriptions')
     PackSubscriptionsDB.add(
         query.strip(), label.strip(), data['service'], str(root),
-        data['automatic'], datetime.now(timezone.utc).date().isoformat(), weekday
+        data['automatic'], datetime.now(
+            timezone.utc).date().isoformat(), weekday
     )
     cursor.connection.commit()
     return listing()
@@ -233,8 +232,8 @@ def _discover_releases(
                 article['title'])
             release_date = '-'.join(date.groups()) if date else ''
             if not all(
-                term in article['title'].casefold()
-                for term in subscription['query'].casefold().split()):
+                    term in article['title'].casefold()
+                    for term in subscription['query'].casefold().split()):
                 continue
             try:
                 datetime.strptime(release_date, '%Y-%m-%d')

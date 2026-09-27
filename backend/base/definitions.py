@@ -2008,3 +2008,19 @@ class PackJob(TypedDict):
     message: str
     received: int
     total: int
+
+
+class InboxJournalEntry(TypedDict):
+    """Persisted scan/import record; issue_ids contains JSON-encoded IDs."""
+
+    id: int
+    root: str
+    relative_path: str
+    token: str
+    status: str
+    message: str
+    size: int
+    mtime: str
+    volume_id: Union[int, None]
+    issue_ids: str
+    destination: Union[str, None]
