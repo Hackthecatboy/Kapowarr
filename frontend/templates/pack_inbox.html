@@ -60,4 +60,37 @@
 <div class="inbox-actions"><label>Show <select id="inbox-filter"><option value="pending">Needs attention</option><option value="matched">Matched</option><option value="review">Review / Held</option><option value="imported">Imported</option><option value="all">All files</option></select></label><label>Search files <input id="inbox-search" type="search" placeholder="Title or filename"></label></div>
 <div class="inbox-table"><table><thead><tr><th>Select</th><th>File</th><th>Status / Match</th></tr></thead><tbody id="inbox-results"></tbody></table></div>
 </div></main>
+<!-- Reusable rows populated by pack_inbox.js. -->
+<template id="pack-file-template">
+    <tr>
+        <td><input type="checkbox"></td>
+        <td class="inbox-file"></td>
+        <td>
+            <span class="inbox-message"></span>
+            <div><button type="button" class="inbox-cleanup">Delete Imported Source</button></div>
+            <p><a class="inbox-add-series" target="_blank" rel="noopener">Find / Add Series</a></p>
+            <details class="inbox-destination"><summary>Library copy</summary><span></span></details>
+        </td>
+    </tr>
+</template>
+<template id="pack-job-template">
+    <details class="pack-job">
+        <summary></summary>
+        <p class="pack-job-info"></p>
+        <p class="pack-job-path"></p>
+        <button type="button" class="pack-review">Scan Pack for Review</button>
+        <button type="button" class="pack-finish">Finish Pack / Delete Remaining Files</button>
+    </details>
+</template>
+<template id="pack-article-template">
+    <p><span></span> <button type="button">Preview Links</button></p>
+</template>
+<template id="pack-subscription-template">
+    <p>
+        <span class="pack-sub-description"></span>
+        <button type="button" class="pack-sub-toggle"></button>
+        <span class="pack-sub-day">Check every </span>
+        <button type="button" class="pack-sub-save">Save Day</button>
+    </p>
+</template>
 {% endblock %}

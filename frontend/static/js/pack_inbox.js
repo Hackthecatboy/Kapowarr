@@ -1,9 +1,64 @@
+const PackEls = {
+    inbox: {
+        form: document.querySelector('#pack-inbox-form'),
+        folder: document.querySelector('#inbox-folder'),
+        results: document.querySelector('#inbox-results'),
+        status: document.querySelector('#inbox-status'),
+        import: document.querySelector('#inbox-import'),
+        filter: document.querySelector('#inbox-filter'),
+        search: document.querySelector('#inbox-search'),
+        refresh: document.querySelector('#inbox-refresh'),
+        select: document.querySelector('#inbox-select'),
+        heading: document.querySelector('#pack-review-heading')
+    },
+    download: {
+        form: document.querySelector('#pack-download-form'),
+        status: document.querySelector('#pack-download-status'),
+        folder: document.querySelector('#pack-download-folder'),
+        choices: document.querySelector('#pack-download-choices'),
+        jobs: document.querySelector('#pack-download-jobs'),
+        finished: document.querySelector('#pack-finished-jobs'),
+        finished_count: document.querySelector('#pack-finished-count'),
+        article: document.querySelector('#pack-article'),
+        controls: document.querySelector('#pack-download-controls'),
+        refresh: document.querySelector('#pack-jobs-refresh')
+    },
+    discovery: {
+        status: document.querySelector('#pack-discovery-status'),
+        query: document.querySelector('#pack-query'),
+        history_results: document.querySelector('#pack-history-results'),
+        search_results: document.querySelector('#pack-search-results'),
+        older: document.querySelector('#pack-older'),
+        subscriptions: document.querySelector('#pack-subscriptions'),
+        weekday: document.querySelector('#pack-weekday'),
+        subscription_releases: document.querySelector('#pack-subscription-releases'),
+        release_count: document.querySelector('#pack-release-count'),
+        form: document.querySelector('#pack-discovery-form'),
+        subscribe: document.querySelector('#pack-subscribe'),
+        link_filter: document.querySelector('#pack-link-filter'),
+        service: document.querySelector('#pack-service'),
+        sub_mode: document.querySelector('#pack-sub-mode'),
+        check: document.querySelector('#pack-check')
+    },
+    templates: {
+        file: document.querySelector('#pack-file-template'),
+        job: document.querySelector('#pack-job-template'),
+        article: document.querySelector('#pack-article-template'),
+        subscription: document.querySelector('#pack-subscription-template')
+    }
+};
+
+// Clone static markup; API values are assigned as text, never parsed as HTML.
+function clonePackRow(template) {
+    return template.content.firstElementChild.cloneNode(true);
+}
+
 usingApiKey().then(apiKey => {
-    const form = document.querySelector('#pack-inbox-form');
-    const folder = document.querySelector('#inbox-folder');
-    const rows = document.querySelector('#inbox-results');
-    const status = document.querySelector('#inbox-status');
-    const importButton = document.querySelector('#inbox-import');
+    const form = PackEls.inbox.form;
+    const folder = PackEls.inbox.folder;
+    const rows = PackEls.inbox.results;
+    const status = PackEls.inbox.status;
+    const importButton = PackEls.inbox.import;
     let busy = false;
     const selected = () => [...rows.querySelectorAll('tr:not([hidden]) input:checked')].map(input => input.value);
     function controls() {
@@ -13,8 +68,8 @@ usingApiKey().then(apiKey => {
         importButton.disabled = busy || !selected().length || selected().length > 100;
     }
     function filterRows() {
-        const mode = document.querySelector('#inbox-filter').value;
-        const query = document.querySelector('#inbox-search').value.trim().toLocaleLowerCase();
+        const mode = PackEls.inbox.filter.value;
+        const query = PackEls.inbox.search.value.trim().toLocaleLowerCase();
         for (const row of rows.children) {
             const state = row.dataset.status;
             const visible = (mode === 'all' || (mode === 'pending' && !['imported', 'discarded'].includes(state))
@@ -27,52 +82,47 @@ usingApiKey().then(apiKey => {
         status.textContent = `${visible} of ${rows.children.length} files shown. ${rows.querySelectorAll('[data-status="matched"]').length} matched. Select up to 100 to import.`;
         controls();
     }
-    document.querySelector('#inbox-filter').onchange = filterRows;
-    document.querySelector('#inbox-search').oninput = filterRows;
+    PackEls.inbox.filter.onchange = filterRows;
+    PackEls.inbox.search.oninput = filterRows;
     function render(data) {
         folder.value = data.folder;
         if (!packFolder.value) packFolder.value = data.folder;
         rows.replaceChildren();
         for (const item of data.items) {
-            const row = document.createElement('tr');
-            row.dataset.status = item.status; row.dataset.path = item.relative_path;
-            const selection = document.createElement('td');
+            const row = clonePackRow(PackEls.templates.file);
+            row.dataset.status = item.status;
+            row.dataset.path = item.relative_path;
+            const input = row.querySelector('input');
             if (item.status === 'matched') {
-                const input = document.createElement('input');
-                input.type = 'checkbox'; input.value = item.token;
+                input.value = item.token;
                 input.setAttribute('aria-label', 'Import ' + item.relative_path);
                 input.onchange = controls;
-                selection.appendChild(input);
+            } else {
+                input.remove();
             }
-            const file = document.createElement('td');
+            const file = row.querySelector('.inbox-file');
             file.textContent = item.relative_path.split('/').pop();
             file.title = item.relative_path;
-            const info = document.createElement('td');
-            info.textContent = `${item.status}: ${item.message}`;
+            row.querySelector('.inbox-message').textContent = `${item.status}: ${item.message}`;
+            const cleanup = row.querySelector('.inbox-cleanup');
             if (item.can_cleanup) {
-                const cleanup = document.createElement('button');
-                cleanup.type = 'button'; cleanup.className = 'inbox-cleanup';
-                cleanup.textContent = 'Delete Imported Source';
                 cleanup.onclick = () => request('cleanup', [item.token]);
-                info.append(document.createElement('br'), cleanup);
+            } else {
+                cleanup.parentElement.remove();
             }
+            const add = row.querySelector('.inbox-add-series');
             if (item.series_query) {
-                const action = document.createElement('p');
-                const add = document.createElement('a');
                 add.href = `${url_base}/add?q=${encodeURIComponent(item.series_query)}`;
-                add.target = '_blank'; add.rel = 'noopener';
-                add.textContent = 'Find / Add Series';
-                add.className = 'inbox-add-series';
-                action.append(add);
-                info.append(action);
+            } else {
+                add.parentElement.remove();
             }
+            const destination = row.querySelector('.inbox-destination');
             if (item.destination) {
-                const destination = document.createElement('details');
-                const summary = document.createElement('summary'); summary.textContent = 'Library copy';
-                destination.append(summary, item.destination);
-                info.appendChild(destination);
+                destination.querySelector('span').textContent = item.destination;
+            } else {
+                destination.remove();
             }
-            row.append(selection, file, info); rows.appendChild(row);
+            rows.appendChild(row);
         }
         filterRows();
     }
@@ -93,17 +143,17 @@ usingApiKey().then(apiKey => {
         } finally { busy = false; controls(); }
     }
     form.onsubmit = event => { event.preventDefault(); if (form.reportValidity()) request('scan'); };
-    document.querySelector('#inbox-refresh').onclick = () => request('refresh');
-    document.querySelector('#inbox-select').onclick = () => {
+    PackEls.inbox.refresh.onclick = () => request('refresh');
+    PackEls.inbox.select.onclick = () => {
         [...rows.querySelectorAll('tr:not([hidden]) input')].forEach((input, index) => input.checked = index < 100);
         controls();
     };
     importButton.onclick = () => request('import');
-    const packForm = document.querySelector('#pack-download-form');
-    const packStatus = document.querySelector('#pack-download-status');
-    const packFolder = document.querySelector('#pack-download-folder');
-    const choices = document.querySelector('#pack-download-choices');
-    const jobs = document.querySelector('#pack-download-jobs');
+    const packForm = PackEls.download.form;
+    const packStatus = PackEls.download.status;
+    const packFolder = PackEls.download.folder;
+    const choices = PackEls.download.choices;
+    const jobs = PackEls.download.jobs;
     let downloadingRequest = false;
     async function packError(error) {
         let message = 'Pack operation failed. Check System → Logs.';
@@ -115,30 +165,27 @@ usingApiKey().then(apiKey => {
         try {
             const data = await fetchAPI('/pack-downloads', apiKey);
             jobs.replaceChildren();
-            const finishedJobs = document.querySelector('#pack-finished-jobs'); finishedJobs.replaceChildren();
-            document.querySelector('#pack-finished-count').textContent = `(${data.result.filter(job => job.status === 'finished').length})`;
+            const finishedJobs = PackEls.download.finished; finishedJobs.replaceChildren();
+            PackEls.download.finished_count.textContent = `(${data.result.filter(job => job.status === 'finished').length})`;
             for (const job of data.result) {
                 if (!packFolder.value || packFolder.value === job.folder || packFolder.value.startsWith(job.folder + '/')) packFolder.value = job.root;
-                const row = document.createElement('details');
-                row.className = 'pack-job';
+                const row = clonePackRow(PackEls.templates.job);
                 row.open = jobOpen.get(job.id) ?? (job.status !== 'finished');
                 row.ontoggle = () => { if (row.isConnected) jobOpen.set(job.id, row.open); };
-                const title = document.createElement('summary');
+                const title = row.querySelector('summary');
                 title.textContent = `${job.title} — ${job.status}`;
-                const info = document.createElement('p');
+                const info = row.querySelector('.pack-job-info');
                 info.textContent = `${job.status}: ${(job.received / 1024 / 1024).toFixed(1)} MiB${job.total ? ' / ' + (job.total / 1024 / 1024).toFixed(1) + ' MiB' : ''}. ${job.message}`;
-                const path = document.createElement('p');
+                const path = row.querySelector('.pack-job-path');
                 path.textContent = job.folder;
-                row.append(title, info, path);
+                const review = row.querySelector('.pack-review');
+                const finish = row.querySelector('.pack-finish');
                 if (job.status === 'ready') {
-                    const review = document.createElement('button');
-                    review.type = 'button'; review.textContent = 'Scan Pack for Review';
-                    review.onclick = () => { if (!busy) { folder.value = job.folder + '/ready'; request('scan'); document.querySelector('#pack-review-heading').scrollIntoView({block: 'start'}); } };
-                    row.append(review);
+                    review.onclick = () => { if (!busy) { folder.value = job.folder + '/ready'; request('scan'); PackEls.inbox.heading.scrollIntoView({block: 'start'}); } };
+                } else {
+                    review.remove();
                 }
                 if (job.status === 'ready' || job.status === 'held') {
-                    const finish = document.createElement('button');
-                    finish.type = 'button'; finish.textContent = 'Finish Pack / Delete Remaining Files';
                     finish.onclick = async () => {
                         finish.disabled = true;
                         try {
@@ -152,7 +199,8 @@ usingApiKey().then(apiKey => {
                         } catch (error) { await packError(error); }
                         finally { finish.disabled = false; }
                     };
-                    row.append(finish);
+                } else {
+                    finish.remove();
                 }
                 (job.status === 'finished' ? finishedJobs : jobs).append(row);
             }
@@ -164,7 +212,7 @@ usingApiKey().then(apiKey => {
         downloadingRequest = true;
         choices.replaceChildren(); packStatus.textContent = 'Reading article download links…';
         try {
-            const data = await (await sendAPI('POST', '/pack-downloads/preview', apiKey, {}, {url: document.querySelector('#pack-article').value})).json();
+            const data = await (await sendAPI('POST', '/pack-downloads/preview', apiKey, {}, {url: PackEls.download.article.value})).json();
             packStatus.textContent = `${data.result.title}: choose one pack link or mirror. Do not download every mirror.`;
             if (!data.result.choices.length) packStatus.textContent += ' No supported download buttons found.';
             for (const choice of data.result.choices) {
@@ -187,8 +235,8 @@ usingApiKey().then(apiKey => {
         } catch (error) { await packError(error); }
         finally { downloadingRequest = false; }
     };
-    const discoveryStatus = document.querySelector('#pack-discovery-status');
-    const queryInput = document.querySelector('#pack-query');
+    const discoveryStatus = PackEls.discovery.status;
+    const queryInput = PackEls.discovery.query;
     let historyPage = 1;
     let historyQuery = '';
     let discoveryBusy = false;
@@ -196,17 +244,16 @@ usingApiKey().then(apiKey => {
         return (await (await sendAPI('POST', `/pack-subscriptions/${action}`, apiKey, {}, data)).json()).result;
     }
     function previewArticle(article) {
-        document.querySelector('#pack-download-controls').open = true;
-        document.querySelector('#pack-article').value = article;
+        PackEls.download.controls.open = true;
+        PackEls.download.article.value = article;
         packForm.requestSubmit();
         packForm.scrollIntoView({block: 'start'});
     }
     function articleRow(title, url, message = '') {
-        const row = document.createElement('p');
-        const preview = document.createElement('button');
-        preview.type = 'button'; preview.textContent = 'Preview Links';
+        const row = clonePackRow(PackEls.templates.article);
+        const preview = row.querySelector('button');
         preview.onclick = () => previewArticle(url);
-        row.append(title + (message ? ' — ' + message + ' ' : ' '), preview);
+        row.querySelector('span').textContent = title + (message ? ' — ' + message + ' ' : ' ');
         return row;
     }
     async function searchPacks(reset) {
@@ -216,11 +263,11 @@ usingApiKey().then(apiKey => {
         discoveryStatus.textContent = 'Searching GetComics…';
         try {
             const result = await discoveryPost('search', {query: historyQuery, page: historyPage});
-            const rows = document.querySelector('#pack-history-results');
+            const rows = PackEls.discovery.history_results;
             if (reset) rows.replaceChildren();
-            document.querySelector('#pack-search-results').open = true;
+            PackEls.discovery.search_results.open = true;
             result.articles.forEach(article => rows.append(articleRow(article.title, article.url)));
-            document.querySelector('#pack-older').disabled = !result.has_more || historyPage >= 100;
+            PackEls.discovery.older.disabled = !result.has_more || historyPage >= 100;
             historyPage += 1;
             discoveryStatus.textContent = `${result.articles.length} articles on this page. Preview and select older packs individually.`;
         } catch (error) { discoveryStatus.textContent = 'Search failed; check System Logs.'; }
@@ -229,50 +276,50 @@ usingApiKey().then(apiKey => {
     async function refreshSubscriptions() {
         try {
             const data = (await fetchAPI('/pack-subscriptions', apiKey)).result;
-            const rows = document.querySelector('#pack-subscriptions'); rows.replaceChildren();
+            const rows = PackEls.discovery.subscriptions; rows.replaceChildren();
             for (const sub of data.subscriptions) {
-                const row = document.createElement('p');
-                const toggle = document.createElement('button'); toggle.type = 'button';
+                const row = clonePackRow(PackEls.templates.subscription);
+                const toggle = row.querySelector('.pack-sub-toggle');
                 toggle.textContent = sub.enabled ? 'Pause' : 'Resume';
                 toggle.onclick = async () => {
                     try { await discoveryPost('toggle', {id: sub.id, enabled: !sub.enabled}); await refreshSubscriptions(); }
                     catch (error) { discoveryStatus.textContent = 'Could not change subscription.'; }
                 };
-                row.append(`${sub.query} / ${sub.link_filter} / ${sub.service} — ${sub.automatic ? 'Automatic download' : 'Review only'} — ${sub.message}. Last check: ${sub.last_checked || 'Not checked yet'} `, toggle);
-                const day = document.querySelector('#pack-weekday').cloneNode(true);
+                row.querySelector('.pack-sub-description').textContent = `${sub.query} / ${sub.link_filter} / ${sub.service} — ${sub.automatic ? 'Automatic download' : 'Review only'} — ${sub.message}. Last check: ${sub.last_checked || 'Not checked yet'} `;
+                const day = PackEls.discovery.weekday.cloneNode(true);
                 day.removeAttribute('id'); day.value = String(sub.weekday);
                 day.onchange = () => { day.dataset.dirty = 'true'; };
                 day.setAttribute('aria-label', 'Check weekday for ' + sub.query);
-                const save = document.createElement('button'); save.type = 'button'; save.textContent = 'Save Day';
+                const save = row.querySelector('.pack-sub-save');
                 save.onclick = async () => {
                     save.disabled = true;
                     try { await discoveryPost('schedule', {id: sub.id, weekday: Number(day.value)}); await refreshSubscriptions(); }
                     catch (_) { discoveryStatus.textContent = 'Could not save weekday.'; }
                     finally { save.disabled = false; }
                 };
-                row.append(' Check every ', day, save);
+                row.querySelector('.pack-sub-day').append(day);
                 rows.append(row);
             }
-            const releases = document.querySelector('#pack-subscription-releases'); releases.replaceChildren();
+            const releases = PackEls.discovery.subscription_releases; releases.replaceChildren();
             // The same weekly article can be found by several subscriptions.
             const groups = new Map();
             for (const release of data.releases) {
                 if (!groups.has(release.article)) groups.set(release.article, {title: release.title, states: new Set()});
                 groups.get(release.article).states.add(`${release.status}: ${release.message}`);
             }
-            document.querySelector('#pack-release-count').textContent = `(${groups.size})`;
+            PackEls.discovery.release_count.textContent = `(${groups.size})`;
             [...groups.entries()].sort((a, b) => b[1].title.localeCompare(a[1].title, undefined, {numeric: true}))
                 .forEach(([article, group]) => releases.append(articleRow(group.title, article, [...group.states].join('; '))));
         } catch (_) { discoveryStatus.textContent = 'Could not load subscriptions.'; }
     }
-    document.querySelector('#pack-discovery-form').onsubmit = event => { event.preventDefault(); searchPacks(true); };
-    document.querySelector('#pack-older').onclick = () => searchPacks(false);
-    document.querySelector('#pack-subscribe').onclick = async () => {
+    PackEls.discovery.form.onsubmit = event => { event.preventDefault(); searchPacks(true); };
+    PackEls.discovery.older.onclick = () => searchPacks(false);
+    PackEls.discovery.subscribe.onclick = async () => {
         try {
-            await discoveryPost('create', {query: queryInput.value, link_filter: document.querySelector('#pack-link-filter').value,
-                service: document.querySelector('#pack-service').value, folder: packFolder.value,
-                weekday: Number(document.querySelector('#pack-weekday').value),
-                automatic: document.querySelector('#pack-sub-mode').value === 'download'});
+            await discoveryPost('create', {query: queryInput.value, link_filter: PackEls.discovery.link_filter.value,
+                service: PackEls.discovery.service.value, folder: packFolder.value,
+                weekday: Number(PackEls.discovery.weekday.value),
+                automatic: PackEls.discovery.sub_mode.value === 'download'});
             discoveryStatus.textContent = 'Subscription saved. Checks run weekly on the selected day; use Check Subscriptions Now to check sooner.';
             await refreshSubscriptions();
         } catch (error) {
@@ -280,16 +327,16 @@ usingApiKey().then(apiKey => {
             catch (_) { discoveryStatus.textContent = 'Could not save subscription.'; }
         }
     };
-    document.querySelector('#pack-check').onclick = async () => {
+    PackEls.discovery.check.onclick = async () => {
         try { await discoveryPost('check'); discoveryStatus.textContent = 'Subscription check queued. Results update below.'; }
         catch (_) { discoveryStatus.textContent = 'Could not queue subscription check.'; }
     };
     refreshSubscriptions();
     setInterval(() => {
-        const subscriptions = document.querySelector('#pack-subscriptions');
+        const subscriptions = PackEls.discovery.subscriptions;
         if (!document.hidden && !subscriptions.contains(document.activeElement) && !subscriptions.querySelector('[data-dirty]')) refreshSubscriptions();
     }, 10000);
-    document.querySelector('#pack-jobs-refresh').onclick = refreshJobs;
+    PackEls.download.refresh.onclick = refreshJobs;
     refreshJobs();
     setInterval(() => { if (!document.hidden) refreshJobs(); }, 5000);
     request('refresh');
