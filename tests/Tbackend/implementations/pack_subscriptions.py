@@ -20,6 +20,8 @@ class PackSubscriptions(unittest.TestCase):
         for module in ('pack_downloads', 'pack_subscriptions', 'pack_inbox'):
             patcher = patch('backend.features.' + module + '.get_db', return_value=self.cursor)
             patcher.start(); self.addCleanup(patcher.stop)
+        patcher = patch('backend.internals.db_models.get_db', return_value=self.cursor)
+        patcher.start(); self.addCleanup(patcher.stop)
         downloads._ACTIVE.clear(); downloads._CLEANUPS.clear()
 
     def pack(self):
@@ -144,3 +146,23 @@ class PackSubscriptions(unittest.TestCase):
         self.assertEqual(row['query'], 'weekly pack')
         self.assertEqual(row['weekday'], 6)
         self.assertIsNone(row['last_scheduled'])
+
+    def test_database_model_keeps_transaction_ownership_with_workflow(self):
+        from backend.internals.db_models import PackSubscriptionsDB
+        self.subscribe(False)
+        PackSubscriptionsDB.set_weekday(1, 2)
+        PackSubscriptionsDB.record_release(
+            1, 'https://getcomics.org/example/', 'Example', 'pending', ''
+        )
+        self.db.rollback()
+        self.assertEqual(PackSubscriptionsDB.releases(), [])
+        PackSubscriptionsDB.record_release(
+            1, 'https://getcomics.org/example/', 'Example', 'tracked', 'Saved'
+        )
+        self.db.commit()
+        PackSubscriptionsDB.record_release(
+            1, 'https://getcomics.org/example/', 'Example', 'pending', ''
+        )
+        self.assertEqual(PackSubscriptionsDB.releases()[0]['status'], 'tracked')
+        self.assertEqual(PackSubscriptionsDB.pending(1), [])
+        self.db.rollback()

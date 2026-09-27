@@ -1,15 +1,17 @@
 """Dated GetComics subscriptions and explicitly selected historical releases."""
 import re
 from datetime import datetime, timezone
-from typing import Any, List, Mapping, Optional, TypedDict
+from typing import Any, List, Mapping, TypedDict
 
 from bs4 import BeautifulSoup
 
 from backend.base.custom_exceptions import InvalidKeyValue
+from backend.base.definitions import PackSubscriptionListing
 from backend.base.helpers import Session
 from backend.base.logging import LOGGER
 from backend.features import pack_downloads as downloads
 from backend.internals.db import get_db
+from backend.internals.db_models import PackSubscriptionsDB
 
 SERVICES = ('GetComics', 'MediaFire', 'WeTransfer', 'Pixeldrain')
 
@@ -29,38 +31,6 @@ class PackSearchResult(TypedDict):
     has_more: bool
 
 
-class PackSubscription(TypedDict):
-    """Persisted subscription configuration and check timestamps."""
-
-    id: int
-    query: str
-    link_filter: str
-    service: str
-    folder: str
-    automatic: int
-    enabled: int
-    created: str
-    last_checked: Optional[str]
-    message: str
-    weekday: int
-    last_scheduled: Optional[str]
-
-
-class PackRelease(TypedDict):
-    """An article discovered for a subscription and its processing state."""
-
-    subscription_id: int
-    article: str
-    title: str
-    status: str
-    message: str
-
-
-class PackSubscriptionListing(TypedDict):
-    """Subscriptions and the most recently recorded release history."""
-
-    subscriptions: List[PackSubscription]
-    releases: List[PackRelease]
 
 
 def search(query: object, page: object = 1) -> PackSearchResult:
@@ -114,15 +84,9 @@ def search(query: object, page: object = 1) -> PackSearchResult:
 
 def listing() -> PackSubscriptionListing:
     """Return all subscriptions and the latest 100 recorded releases."""
-    cursor = get_db()
     return {
-        'subscriptions': cursor.execute(
-            'SELECT * FROM pack_subscriptions ORDER BY id'
-        ).fetchalldict(),
-        'releases': cursor.execute(
-            'SELECT * FROM pack_subscription_releases '
-            'ORDER BY rowid DESC LIMIT 100'
-        ).fetchalldict()
+        'subscriptions': PackSubscriptionsDB.fetch(),
+        'releases': PackSubscriptionsDB.releases()
     }
 
 
@@ -159,18 +123,11 @@ def create(data: Mapping[str, Any]) -> PackSubscriptionListing:
     _validate_weekday(weekday)
     root = downloads.download_root(data.get('folder'))
     cursor = get_db()
-    if cursor.execute(
-        'SELECT count(*) FROM pack_subscriptions').fetchone()[0] >= 20:
+    if PackSubscriptionsDB.count() >= 20:
         raise InvalidKeyValue('subscription', 'Maximum 20 subscriptions')
-    cursor.execute(
-        'INSERT INTO pack_subscriptions('
-        'query,link_filter,service,folder,automatic,created,weekday'
-        ') VALUES(?,?,?,?,?,?,?)',
-        (
-            query.strip(), label.strip(), data['service'], str(root),
-            data['automatic'],
-            datetime.now(timezone.utc).date().isoformat(), weekday
-        )
+    PackSubscriptionsDB.add(
+        query.strip(), label.strip(), data['service'], str(root),
+        data['automatic'], datetime.now(timezone.utc).date().isoformat(), weekday
     )
     cursor.connection.commit()
     return listing()
@@ -194,8 +151,7 @@ def toggle(ident: object, enabled: object) -> PackSubscriptionListing:
             'subscription', 'Choose a subscription and enabled state'
         )
     cursor = get_db()
-    cursor.execute(
-        'UPDATE pack_subscriptions SET enabled=? WHERE id=?', (enabled, ident))
+    PackSubscriptionsDB.set_enabled(ident, enabled)
     cursor.connection.commit()
     return listing()
 
@@ -224,8 +180,7 @@ def schedule(ident: object, weekday: object) -> PackSubscriptionListing:
     if type(ident) is not int:
         raise InvalidKeyValue('subscription', 'Choose a subscription')
     cursor = get_db()
-    cursor.execute(
-        'UPDATE pack_subscriptions SET weekday=? WHERE id=?', (weekday, ident))
+    PackSubscriptionsDB.set_weekday(ident, weekday)
     cursor.connection.commit()
     return listing()
 
@@ -238,10 +193,7 @@ def _release_status(
 ) -> None:
     """Commit the processing state for one subscription/article pair."""
     cursor = get_db()
-    cursor.execute(
-        'UPDATE pack_subscription_releases SET status=?,message=? '
-        'WHERE subscription_id=? AND article=?',
-        (status, message, ident, article))
+    PackSubscriptionsDB.set_release_status(ident, article, status, message)
     cursor.connection.commit()
 
 
@@ -259,8 +211,7 @@ def check(force: bool = False) -> None:
     failed subscription does not stop the others.
     """
     cursor = get_db()
-    subscriptions: List[PackSubscription] = cursor.execute(
-        'SELECT * FROM pack_subscriptions WHERE enabled=1').fetchalldict()
+    subscriptions = PackSubscriptionsDB.fetch(enabled_only=True)
     for subscription in subscriptions:
         now = datetime.now()  # Follow the server/container timezone.
         today = now.date().isoformat()
@@ -270,9 +221,7 @@ def check(force: bool = False) -> None:
                 continue
             # Persist before network access so restarts and failures do not
             # turn a weekly check into hourly requests for the rest of the day.
-            cursor.execute(
-                'UPDATE pack_subscriptions SET last_scheduled=? WHERE id=?',
-                (today, subscription['id']))
+            PackSubscriptionsDB.mark_scheduled(subscription['id'], today)
             cursor.connection.commit()
         try:
             # Bounded discovery; older pages are available via explicit
@@ -296,30 +245,21 @@ def check(force: bool = False) -> None:
                         )
                     except ValueError:
                         eligible = False
-                    cursor.execute(
-                        'INSERT OR IGNORE INTO pack_subscription_releases '
-                        'VALUES(?,?,?,?,?)',
-                        (subscription['id'],
-                         article['url'],
-                         article['title'],
-                         'pending' if eligible else 'review',
-                         '' if eligible else (
-                             'Older or undated release; '
-                             'use Preview to choose it manually'
-                        ))
+                    PackSubscriptionsDB.record_release(
+                        subscription['id'], article['url'], article['title'],
+                        'pending' if eligible else 'review',
+                        '' if eligible else (
+                            'Older or undated release; '
+                            'use Preview to choose it manually'
+                        )
                     )
                 cursor.connection.commit()
                 if not result['has_more']:
                     break
-            pending = cursor.execute(
-                "SELECT * FROM pack_subscription_releases "
-                "WHERE subscription_id=? AND status='pending' ORDER BY article",
-                (subscription['id'],)).fetchalldict()
+            pending = PackSubscriptionsDB.pending(subscription['id'])
             for release in pending:
                 article = release['article']
-                if cursor.execute(
-                    'SELECT 1 FROM pack_downloads WHERE article=?',
-                        (article,)).fetchone():
+                if PackSubscriptionsDB.article_has_download(article):
                     _release_status(
                         subscription['id'],
                         article, 'tracked',
@@ -349,9 +289,7 @@ def check(force: bool = False) -> None:
                         'preview and select a link manually'
                     )
                     continue
-                if not cursor.execute(
-                    'SELECT enabled FROM pack_subscriptions WHERE id=?',
-                        (subscription['id'],)).fetchone()[0]:
+                if not PackSubscriptionsDB.is_enabled(subscription['id']):
                     break
                 downloads.start(matches[0]['token'], subscription['folder'])
                 _release_status(
@@ -360,17 +298,15 @@ def check(force: bool = False) -> None:
                     'Automatic pack download submitted; '
                     'imports still require review'
                 )
-            cursor.execute(
-                'UPDATE pack_subscriptions SET last_checked=?,message=? '
-                'WHERE id=?',
-                (datetime.now(timezone.utc).isoformat(),
-                 'Check completed', subscription['id'])
+            PackSubscriptionsDB.mark_checked(
+                subscription['id'], datetime.now(timezone.utc).isoformat(),
+                'Check completed'
             )
         except Exception:
             LOGGER.exception(
                 'Pack subscription %s check failed',
                 subscription['id'])
-            cursor.execute(
-                'UPDATE pack_subscriptions SET message=? WHERE id=?',
-                ('Check failed; inspect System Logs', subscription['id']))
+            PackSubscriptionsDB.set_message(
+                subscription['id'], 'Check failed; inspect System Logs'
+            )
         cursor.connection.commit()

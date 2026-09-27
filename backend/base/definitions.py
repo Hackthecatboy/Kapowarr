@@ -1959,3 +1959,37 @@ class ExternalDownload(Download):
 
     def __repr__(self) -> str:
         return f'<{self.__class__.__name__}(download_link={self.download_link}; file={self.files[0]}; state={self.state.value}); {id(self)}>'
+
+
+class PackSubscription(TypedDict):
+    """Persisted subscription configuration and check timestamps."""
+
+    id: int
+    query: str
+    link_filter: str
+    service: str
+    folder: str
+    automatic: int
+    enabled: int
+    created: str
+    last_checked: Union[str, None]
+    message: str
+    weekday: int
+    last_scheduled: Union[str, None]
+
+
+class PackRelease(TypedDict):
+    """An article discovered for a subscription and its processing state."""
+
+    subscription_id: int
+    article: str
+    title: str
+    status: str
+    message: str
+
+
+class PackSubscriptionListing(TypedDict):
+    """Subscriptions and the most recently recorded release history."""
+
+    subscriptions: List[PackSubscription]
+    releases: List[PackRelease]
