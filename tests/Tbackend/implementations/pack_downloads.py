@@ -109,10 +109,12 @@ class PackDownloads(unittest.TestCase):
             response.headers = {'Content-Length': str(len(body) + int(truncated))}
             response.iter_content.return_value = [body]
             client = Mock(); client._fetch_pure_link.return_value = response
-            with patch.object(packs, '_purify_link', new=AsyncMock(return_value=('https://host.test/pack', DownloadClientIdentifier.DDL))), \
+            with patch.object(packs, 'resolve_download_link', new=AsyncMock(return_value=('https://host.test/pack', DownloadClientIdentifier.DDL))), \
                     patch.object(packs.DownloadClients, 'get_client', return_value=DDLDownload), \
                     patch.object(DDLDownload, 'pack_client', return_value=client):
                 packs._worker(ident, dict(service=GCDownloadService.GETCOMICS, link='https://host.test/pack'), destination)
+            client._ssn.close.assert_called_once()
+            response.__exit__.assert_called_once()
             status = self.cursor.execute('SELECT status FROM pack_downloads WHERE id=?', (ident,)).fetchone()[0]
             self.assertEqual(status, 'held' if truncated else 'ready')
             if truncated:
@@ -128,3 +130,30 @@ class PackDownloads(unittest.TestCase):
         self.db.commit()
         with patch.object(pack_inbox, 'Settings'):
             with self.assertRaises(InvalidKeyValue): pack_inbox.scan(str(self.root))
+
+    def test_public_pack_stream_closes_session_when_request_fails(self):
+        from backend.implementations.download_clients.base import BaseDirectDownload
+        client = Mock()
+        client._fetch_pure_link.side_effect = OSError('Connection lost')
+        with patch.object(BaseDirectDownload, 'pack_client', return_value=client):
+            with self.assertRaises(OSError):
+                with BaseDirectDownload.stream_pack('https://host.test/pack'):
+                    self.fail('A failed request must not yield a response')
+        client._ssn.close.assert_called_once()
+
+    def test_public_article_parser_preserves_order_and_deduplicates(self):
+        from bs4 import BeautifulSoup
+        from backend.implementations.download_preppers.ddl.GetComics import get_article_downloads
+        soup = BeautifulSoup('''<h1>Weekly Pack</h1>
+            <section class="post-contents">
+            <a href="https://host.test/one">Main Server</a>
+            <a href="https://host.test/one">Main Server</a>
+            <a href="https://mega.nz/file/test">Mega</a>
+            </section>''', 'html.parser')
+        title, links = get_article_downloads(soup)
+        self.assertEqual(title, 'Weekly Pack')
+        self.assertEqual([entry['link'] for entry in links],
+                         ['https://host.test/one', 'https://mega.nz/file/test'])
+        self.assertEqual(links[1]['service'], GCDownloadService.MEGA)
+        with self.assertRaises(ValueError):
+            get_article_downloads(BeautifulSoup('<h1>No links</h1>', 'html.parser'))

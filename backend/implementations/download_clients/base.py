@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 
+from contextlib import contextmanager
 from os import sep
 from os.path import basename, join, splitext
 from re import IGNORECASE, compile
 from threading import Thread
 from time import perf_counter
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, Iterator, List, Tuple, Union
 from urllib.parse import unquote_plus
 
 from requests import RequestException, Response
@@ -227,10 +228,11 @@ class BaseDirectDownload(Download):
         return
 
     @classmethod
-    def pack_client(cls, link: str):
+    def pack_client(cls, link: str) -> "BaseDirectDownload":
         """Resolve a pack through this HTTP provider without a volume or queue job.
 
-        The caller owns the returned session and response lifecycle. This is
+        Prefer stream_pack() when consuming a pack response. The caller of this
+        factory owns the returned session and response lifecycle. This is
         limited to BaseDirectDownload providers, not Mega or external clients.
         """
         client = cls.__new__(cls)
@@ -243,6 +245,28 @@ class BaseDirectDownload(Download):
             client._ssn.close()
             raise
         return client
+
+    @classmethod
+    @contextmanager
+    def stream_pack(cls, link: str) -> Iterator[Response]:
+        """Resolve and stream an HTTP pack without creating a volume queue job.
+
+        Args:
+            link: Provider URL returned by the article resolver.
+
+        Yields:
+            Streaming response. The caller validates headers and consumes it.
+
+        The response and provider session close on success and on exceptions,
+        including exceptions raised while the caller consumes the stream.
+        Provider resolution and request errors propagate to the caller.
+        """
+        client = cls.pack_client(link)
+        try:
+            with client._fetch_pure_link() as response:
+                yield response
+        finally:
+            client._ssn.close()
 
     def _convert_to_pure_link(self) -> str:
         return self.download_link

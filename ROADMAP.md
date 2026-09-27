@@ -150,3 +150,22 @@ future decision.
 - [Usenet setup and recovery behavior](docs/usenet-downloads.md)
 - [Torrent setup and seeding behavior](docs/torrent-downloads.md)
 - [Synology GHCR deployment](docs/synology-ghcr.md)
+
+## Pack feature structure cleanup
+
+Keep behavior stable while bringing the fork's additions closer to the original
+Kapowarr architecture. Complete and verify each slice separately.
+
+1. **Public provider interfaces (complete; locally verified):** pack workflows
+   use public GetComics article parsing/link resolution and an HTTP streaming
+   context that owns response/session cleanup. Tested with successful downloads,
+   truncated payloads and request failures; live provider validation remains
+   part of container testing.
+2. **Database organization:** move pack persistence into the existing
+   `db_models` pattern, separating SQL from workflow decisions.
+3. **Smaller workflow functions:** split subscription checking and importing
+   into named stages while retaining transaction, recovery and lock boundaries.
+4. **Remaining types and formatting:** replace internal `Any` dictionaries where
+   practical and clean up long statements using project conventions.
+5. **Repeatable frontend tests:** move the temporary UI regression checks into
+   the repository with documented setup and execution.

@@ -4,7 +4,7 @@ from asyncio import gather, run
 from functools import reduce
 from hashlib import sha1
 from re import IGNORECASE, compile
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, TypedDict, Union
 
 from aiohttp import ClientError
 from bencoding import bencode
@@ -320,7 +320,56 @@ def _sort_link_paths(p: List[DownloadGroup]) -> Tuple[float, int]:
     return (1 / issues_covered, len(p))
 
 
-async def _purify_link(
+class ArticleDownloadLink(TypedDict):
+    """A labelled article mirror before provider-specific resolution."""
+
+    link: str
+    label: str
+    service: GCDownloadService
+
+
+def get_article_downloads(
+    soup: BeautifulSoup
+) -> Tuple[str, List[ArticleDownloadLink]]:
+    """Extract labelled non-torrent mirrors without filtering by library series.
+
+    Returns:
+        Article title and at most 100 unique mirrors, in article order. Mega
+        links remain present so callers can show their support status.
+
+    Raises:
+        ValueError: The article has no download section.
+    """
+    body = soup.find('section', class_='post-contents')
+    if body is None:
+        raise ValueError('No GetComics article download section found')
+    groups = _extract_button_links(body, False) + _extract_list_links(body, False)
+    labels = {
+        link: group['web_sub_title']
+        for group in groups
+        for links in group['links'].values()
+        for link in links
+    }
+    result: List[ArticleDownloadLink] = []
+    seen = set()
+    for anchor in body.find_all('a', href=True):
+        link = anchor['href']
+        label = anchor.get_text(' ', strip=True)
+        service = _check_download_link(label.lower(), link, False)
+        if service is None or link in seen:
+            continue
+        seen.add(link)
+        result.append({
+            'link': link,
+            'label': (labels.get(link) or label) + ' — ' + label,
+            'service': service
+        })
+        if len(result) >= 100:
+            break
+    return _get_title(soup) or 'GetComics pack', result
+
+
+async def resolve_download_link(
     download_service: GCDownloadService,
     link: str
 ) -> Tuple[str, DownloadClientIdentifier]:
@@ -615,7 +664,9 @@ class GetComicsPrepper(DownloadPrepper):
         for service, links in group['links'].items():
             for link in iter_commit(links):
                 try:
-                    pure_link, identifier = await _purify_link(service, link)
+                    pure_link, identifier = await resolve_download_link(
+                        service, link
+                    )
 
                 except DownloadLinkBroken:
                     # Link broken

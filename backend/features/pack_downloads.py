@@ -21,8 +21,7 @@ from backend.features.pack_inbox import inbox_operation, valid_root
 from backend.implementations.download_client_manager import DownloadClients
 from backend.implementations.download_clients.base import BaseDirectDownload
 from backend.implementations.download_preppers.ddl.GetComics import (
-    _check_download_link, _extract_button_links,
-    _extract_list_links, _get_title, _purify_link)
+    get_article_downloads, resolve_download_link)
 from backend.internals.db import get_db
 from backend.internals.server import Server
 
@@ -138,36 +137,26 @@ def preview(value: object) -> PackDownloadPreview:
         response.raise_for_status()
         article_url(response.url)
         soup = BeautifulSoup(response.text, 'html.parser')
-    body = soup.find('section', class_='post-contents')
-    if body is None:
-        raise InvalidKeyValue('url', 'No GetComics article download section found')
-    title = _get_title(soup) or 'GetComics pack'
+    try:
+        title, links = get_article_downloads(soup)
+    except ValueError as error:
+        raise InvalidKeyValue('url', str(error))
     choices: List[PackDownloadChoice] = []
-    seen = set()
-    groups = _extract_button_links(body, False) + _extract_list_links(body, False)
-    labels = {link: group['web_sub_title'] for group in groups
-              for links in group['links'].values() for link in links}
-    # No series/issue filter: the user explicitly picks one pack link. Preserve
-    # multipart labels and mirrors instead of assuming every article link is a pack.
     with _LOCK:
         for token, item in list(_PREVIEWS.items()):
             if monotonic() - item['created'] > 900:
                 del _PREVIEWS[token]
-        for anchor in body.find_all('a', href=True):
-            link = anchor['href']
-            label = anchor.get_text(' ', strip=True)
-            service = _check_download_link(label.lower(), link, False)
-            if service is None or link in seen:
-                continue
-            seen.add(link)
+        for entry in links:
             token = uuid4().hex
-            supported = service.value not in ('Mega',)
-            _PREVIEWS[token] = dict(created=monotonic(), article=article,
-                                    title=title, link=link, service=service)
-            choices.append(dict(token=token, label=(labels.get(link) or label) + " — " + label, service=service.value,
-                                supported=supported))
-            if len(choices) >= 100:
-                break
+            service = entry['service']
+            _PREVIEWS[token] = dict(
+                created=monotonic(), article=article, title=title,
+                link=entry['link'], service=service
+            )
+            choices.append(dict(
+                token=token, label=entry['label'], service=service.value,
+                supported=service.value != 'Mega'
+            ))
     return dict(title=title, choices=choices)
 
 
@@ -293,37 +282,33 @@ def _worker(ident: str, item: Dict[str, Any], destination: Path) -> None:
     is always released; no automatic retry is attempted.
     """
     try:
-        link, identifier = run(_purify_link(item['service'], item['link']))
+        link, identifier = run(resolve_download_link(item['service'], item['link']))
         if identifier not in HTTP_CLIENTS:
             raise ValueError('This pack link needs an unsupported client; use an HTTP mirror or download externally')
         cls = DownloadClients.get_client(identifier)
         if not issubclass(cls, BaseDirectDownload):
             raise ValueError('Unsupported pack download provider')
-        client = cls.pack_client(link)
         received = 0
         last_update = monotonic()
         partial = destination / 'payload.partial'
-        try:
-            with client._fetch_pure_link() as response, partial.open('xb') as output:
-                response.raise_for_status()
-                if 'text/html' in response.headers.get('Content-Type', '').lower():
-                    raise ValueError('Provider returned a web page instead of a download')
-                total = int(response.headers.get('Content-Length', '0'))
-                if total > MAX_BYTES or total > disk_usage(destination).free:
-                    raise ValueError('Pack exceeds available space or the 50 GiB download limit')
-                _update(ident, total=total)
-                for chunk in response.iter_content(1024 * 1024):
-                    received += len(chunk)
-                    if received > MAX_BYTES:
-                        raise ValueError('Pack exceeds the 50 GiB download limit')
-                    output.write(chunk)
-                    if monotonic() - last_update > 2:
-                        _update(ident, received=received)
-                        last_update = monotonic()
-                if not received or (total and received != total):
-                    raise ValueError('Incomplete download; partial file retained')
-        finally:
-            client._ssn.close()
+        with cls.stream_pack(link) as response, partial.open('xb') as output:
+            response.raise_for_status()
+            if 'text/html' in response.headers.get('Content-Type', '').lower():
+                raise ValueError('Provider returned a web page instead of a download')
+            total = int(response.headers.get('Content-Length', '0'))
+            if total > MAX_BYTES or total > disk_usage(destination).free:
+                raise ValueError('Pack exceeds available space or the 50 GiB download limit')
+            _update(ident, total=total)
+            for chunk in response.iter_content(1024 * 1024):
+                received += len(chunk)
+                if received > MAX_BYTES:
+                    raise ValueError('Pack exceeds the 50 GiB download limit')
+                output.write(chunk)
+                if monotonic() - last_update > 2:
+                    _update(ident, received=received)
+                    last_update = monotonic()
+            if not received or (total and received != total):
+                raise ValueError('Incomplete download; partial file retained')
         archive = destination / 'payload.archive'
         partial.rename(archive)
         _update(ident, received=received, status='extracting')
