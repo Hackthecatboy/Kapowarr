@@ -3,11 +3,13 @@
 from pathlib import Path
 from uuid import uuid4
 
-from backend.base.definitions import (DownloadClientIdentifier,
+from backend.base.definitions import (Constants, DownloadClientIdentifier,
                                       DownloadState as DS, DownloadType)
 from backend.implementations.download_client_manager import DownloadClients
 from backend.implementations.download_clients.Usenet import UsenetDownload
-from backend.implementations.managed_job import JobNeedsReview, JobPathNeedsReview, submit_once
+from backend.implementations.managed_job import (JobNeedsReview,
+                                                 JobPathNeedsReview,
+                                                 submit_once)
 from backend.implementations.remote_mapping import RemoteMappings
 from backend.implementations.torrent_support import resolve_torrent
 from backend.internals.db import get_db
@@ -42,7 +44,8 @@ class TorrentDownload(UsenetDownload):
                 'Import was interrupted. Inspect the library copy; torrent data was retained.')
 
     def prepare_submission(self):
-        self.payload = resolve_torrent(self.download_link)
+        if getattr(self, 'payload', None) is None:
+            self.payload = resolve_torrent(self.download_link)
         if self.external_client.get_download(self.payload.info_hash) is not None:
             raise JobNeedsReview(
                 'This torrent already exists in the client. It was not adopted or modified.')
@@ -52,7 +55,28 @@ class TorrentDownload(UsenetDownload):
             self.external_client.id, str(self.target_folder))
         return self.external_client.add_torrent(self.payload, target, 'kapowarr-' + self.token)
 
+    @property
+    def uses_category_paths(self):
+        return getattr(type(self.external_client), 'uses_category_paths', False)
+
+    def content_root(self, info):
+        """Return the local boundary for the client's completed content."""
+        if self.uses_category_paths:
+            return Path(RemoteMappings.remote_to_local(
+                self.external_client.id, info['save_path'])).resolve()
+        return self.target_folder.resolve()
+
     def owns(self, info):
+        if self.uses_category_paths:
+            path = info.get('save_path')
+            if (not self.external_id or self.phase not in ('submitted', 'importing', 'imported')
+                    or info.get('category') != Constants.EXTERNAL_DOWNLOAD_TAG
+                    or not isinstance(path, str) or not path):
+                return False
+            local = Path(RemoteMappings.remote_to_local(self.external_client.id, path))
+            root = Path(self.download_folder).resolve()
+            return (local.is_absolute() and not local.is_symlink()
+                    and (local.resolve() == root or root in local.resolve().parents))
         if (not self.token or self.target_folder.is_symlink()
                 or Path(self.download_folder).resolve() not in self.target_folder.resolve().parents
                 or 'kapowarr-' + self.token not in info.get('tags', [])):
@@ -87,9 +111,9 @@ class TorrentDownload(UsenetDownload):
                 raise JobPathNeedsReview('Client did not report a completed content path')
             local = Path(RemoteMappings.remote_to_local(
                 self.external_client.id, storage))
-            if not local.is_absolute() or local.is_symlink() or not local.exists() or self.target_folder.resolve() not in local.resolve().parents:
+            if not local.is_absolute() or local.is_symlink() or not local.exists() or self.content_root(info) not in local.resolve().parents:
                 raise JobPathNeedsReview(
-                    f'Completed content is unavailable or outside its job folder. Client: {storage}; mapped: {local}; job folder: {self.target_folder}. Check mounts and mappings.')
+                    f'Completed content is unavailable or outside its allowed download location. Client: {storage}; mapped: {local}; content root: {self.content_root(info)}. Check mounts and mappings.')
             self._files = [str(local.resolve())]
         self._state = info['state']
 

@@ -4,10 +4,10 @@ import re
 from contextlib import contextmanager
 
 from backend.base.custom_exceptions import ClientNotWorking, CredentialInvalid
-from backend.base.logging import LOGGER
 from backend.base.definitions import (BrokenClientReason, Constants,
                                       DownloadState as DS, DownloadType,
                                       ExternalClientField as ECF)
+from backend.base.logging import LOGGER
 from backend.implementations.external_client_manager import (
     BaseExternalClient, ExternalClients)
 from backend.implementations.torrent_support import (decode_json, http,
@@ -19,6 +19,8 @@ from backend.implementations.usenet_support import entries, number
 @ExternalClients.register_client(DownloadType.TORRENT, 'qBittorrent',
                                  (ECF.TITLE, ECF.ENABLED, ECF.BASE_URL, ECF.USERNAME, ECF.PASSWORD))
 class qBittorrent(BaseExternalClient):
+    uses_category_paths = True
+
     @staticmethod
     @contextmanager
     def _login(base_url, username, password):
@@ -75,8 +77,8 @@ class qBittorrent(BaseExternalClient):
             return reply
 
     def add_torrent(self, payload, target_folder, tag):
-        data = dict(savepath=target_folder, category=Constants.EXTERNAL_DOWNLOAD_TAG,
-                    tags=tag, autoTMM='false')
+        # Let qBittorrent place new jobs using the category's configured path.
+        data = dict(category=Constants.EXTERNAL_DOWNLOAD_TAG, autoTMM='true')
         kwargs = {'data': data}
         if payload.metainfo:
             kwargs['files'] = {'torrents': (
@@ -128,7 +130,7 @@ class qBittorrent(BaseExternalClient):
         return dict(state=state, size=int(number(job.get('total_size'))),
                     progress=min(100, number(job.get('progress')) * 100),
                     speed=number(job.get('dlspeed')), storage=job.get('content_path'),
-                    save_path=job.get('save_path'), tags=[t.strip() for t in str(job.get('tags', '')).split(',')])
+                    save_path=job.get('save_path'), category=job.get('category'), tags=[t.strip() for t in str(job.get('tags', '')).split(',')])
 
     def delete_download(self, download_id, delete_files):
         self._request('POST', 'torrents/delete',

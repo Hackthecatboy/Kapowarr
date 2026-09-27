@@ -1,6 +1,6 @@
 # Development roadmap
 
-Updated September 26, 2026. This is an unofficial personal development fork.
+Updated September 27, 2026. This is an unofficial personal development fork.
 
 The goal remains a full Sonarr-style indexer and download-client catalog, with
 comic-appropriate automation and recovery. Keep the Kapowarr v1.3.2 foundation
@@ -53,9 +53,12 @@ Acceptance: correct a bad mapping and import the same tracked job without a
 restart, duplicate download or duplicate library copy. Never automatically replay
 an uncertain submission or partially completed import.
 
-### 2. Verify the torrent workflow on Synology — ready for testing
+### 2. Verify the torrent workflow on Synology — in progress
 
-- [ ] Download a matching release through Prowlarr and qBittorrent.
+- [x] Observe qBittorrent transfers after resolving the DHT discovery blocker.
+- [ ] Confirm the downloaded release matches the intended library issue.
+- [ ] Validate hash-based repeat suppression during automatic searches and
+  qBittorrent category-based placement (implemented; locally tested).
 - [ ] Verify library import while the original continues seeding.
 - [ ] Verify restart recovery, mapped paths, ownership checks and queue cleanup.
 - [ ] Verify both Copy and Complete seeding modes.

@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 from os import listdir
 from os.path import basename, join
+from threading import RLock
 from time import sleep
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Tuple, Union
 
 from typing_extensions import assert_never
 
 from backend.base.custom_exceptions import (ClientNotWorking,
+                                            CredentialInvalid,
                                             DownloadLinkBroken,
                                             DownloadQueueEntryNotFound,
                                             DownloadQueueEntryUnmovable,
@@ -25,10 +27,10 @@ from backend.base.definitions import (BlocklistReason, Constants, Download,
 from backend.base.files import create_folder, delete_file_folder
 from backend.base.helpers import CommaList, Singleton
 from backend.base.logging import LOGGER
+from backend.features.direct_import import HeldDirectImport
 from backend.features.post_processing import (PostProcessor,
                                               PostProcessorTorrentsComplete,
                                               PostProcessorTorrentsCopy)
-from backend.features.direct_import import HeldDirectImport
 from backend.features.torrent_downloads import run_torrent
 from backend.features.usenet_downloads import run_usenet
 from backend.implementations.blocklist import add_to_blocklist
@@ -38,6 +40,9 @@ from backend.implementations.download_clients.Usenet import UsenetDownload
 from backend.implementations.download_prepper_manager import DownloadPreppers
 from backend.implementations.external_client_manager import ExternalClients
 from backend.implementations.indexer_client_manager import IndexerClients
+from backend.implementations.managed_job import JobNeedsReview
+from backend.implementations.torrent_support import (magnet_payload,
+                                                     resolve_torrent)
 from backend.implementations.volumes import Issue
 from backend.internals.db import get_db, iter_commit
 from backend.internals.server import (AddedToQueueEvent, QueueStatusEvent,
@@ -50,6 +55,7 @@ if TYPE_CHECKING:
 
 class DownloadHandler(metaclass=Singleton):
     queue: List[Download] = []
+    _enqueue_lock = RLock()
 
     def __init__(self) -> None:
         """Setup the download handler"""
@@ -173,6 +179,14 @@ class DownloadHandler(metaclass=Singleton):
         Returns:
             List[Dict[str, Any]]: Queue entries that were added from the link.
         """
+        with self._enqueue_lock:
+            return self._add(link, indexer_id, volume_id, issue_id, force_match)
+
+    def _add(
+        self, link: str, indexer_id: int, volume_id: int,
+        issue_id: Union[int, None], force_match: bool
+    ) -> List[Dict[str, Any]]:
+        """Prepare and register downloads under the enqueue lock."""
         LOGGER.info(
             'Adding download for ' +
             f'volume {volume_id}{f" issue {issue_id}" if issue_id else ""}'
@@ -226,8 +240,30 @@ class DownloadHandler(metaclass=Singleton):
 
             raise e
 
+        unique: List[Download] = []
+        for download in downloads:
+            if self.link_in_queue(download.download_link):
+                continue
+            if isinstance(download, TorrentDownload):
+                try:
+                    download.payload = resolve_torrent(download.download_link)
+                except (JobNeedsReview, ClientNotWorking, CredentialInvalid):
+                    # Preserve the existing worker's review/error handling when
+                    # metadata is unavailable. Never infer identity from a title.
+                    unique.append(download)
+                    continue
+                candidates = self.queue + unique
+                if any(
+                    isinstance(existing, TorrentDownload)
+                    and self._torrent_identity(existing) == download.payload.info_hash
+                    for existing in candidates
+                ):
+                    LOGGER.info('Torrent already tracked; skipping repeat queue entry')
+                    continue
+            unique.append(download)
+
         result = self.__prepare_downloads_for_queue(
-            downloads,
+            unique,
             forced_match=force_match
         )
         self.queue += result
@@ -527,6 +563,21 @@ class DownloadHandler(metaclass=Singleton):
         return
 
     # region Queue Management
+    @staticmethod
+    def _torrent_identity(download: TorrentDownload) -> Union[str, None]:
+        """Read known identity without contacting or claiming the client job."""
+        if download.external_id:
+            return download.external_id.lower()
+        payload = getattr(download, 'payload', None)
+        if payload is not None:
+            return payload.info_hash
+        if download.download_link.lower().startswith('magnet:'):
+            try:
+                return magnet_payload(download.download_link).info_hash
+            except JobNeedsReview:
+                pass
+        return None
+
     def link_in_queue(self, link: str) -> bool:
         """Check if a link is already in the queue.
 

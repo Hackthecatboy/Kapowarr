@@ -19,7 +19,10 @@ image in Container Manager. The [local build guide](synology-development.md)
 remains available. Use a separate database, library and download folder for the test.
 
 1. Enable the torrent client's Web UI/API. For qBittorrent, create a category
-   named **kapowarr**. Connection testing verifies the category exists.
+   named **kapowarr** and set its save path to the shared torrent download
+   location. New submissions enable Automatic Torrent Management and use that
+   category path; Kapowarr no longer supplies tags or overrides the save path.
+   Connection testing verifies the category exists.
 2. Mount the test download directory into both containers. With the supplied
    compose file, Kapowarr sees it as `/app/temp_downloads`. The torrent client
    may use `/downloads`; configure a Remote Path Mapping from its `/downloads/`
@@ -51,11 +54,23 @@ hybrid torrents must include valid v1 metadata. Endpoint cookies and extra
 indexer authentication headers are not configured in this slice: use the
 Prowlarr/indexer download URL returned in the search result.
 
-Every submission has a random ownership token, client tag/label and dedicated
-`kapowarr-<token>` save folder. Remote mappings apply before submission and when
-reading the client's reported completed path. Both single-file and multi-file
-content are supported. Ownership and the dedicated save path are checked before
-import or deletion. A torrent already in the client is not adopted or modified.
+qBittorrent uses the **kapowarr** category for placement. Its reported save path
+must map to Kapowarr's configured download folder or a subfolder; completed
+content must be inside that save path. A recorded submission hash and the category
+are required before import or deletion. Category membership alone never adopts a
+pre-existing torrent. Tags are not required. Existing tracked jobs are not moved
+or retagged by this update and can continue using their previous per-job folders.
+
+Transmission retains its per-job ownership label and dedicated
+`kapowarr-<token>` folder. Remote mappings apply to client-reported paths in both
+adapters. Both single-file and multi-file content are supported.
+
+Queue admission is serialized and compares resolved torrent hashes against
+tracked jobs, including alternate magnet encodings, changed tracker/title fields,
+and HTTP mirrors. Known hashes from persisted client IDs survive restart; failed
+metadata resolution keeps the existing review handling. Existing duplicate rows
+are not automatically deleted. Use **Remove from queue only** on rejected rows to
+retain the original client job and its files.
 
 The journal persists the returned hash and submission phase. Lost submission
 responses pause for review rather than being retried. Newly added magnets get a
@@ -87,8 +102,10 @@ for that review.
 Tests cover metadata/redirect parsing, authenticated HTTP uploads and RPC session
 challenges, client states, stored search-to-prepper routing, ownership, duplicate
 and missing jobs, single-file import, both seeding modes, and restart behavior.
-They use local fixtures and temporary files. Live qBittorrent/Transmission,
-Prowlarr, swarm transfers and Synology checks remain pending.
+They use local fixtures and temporary files. qBittorrent transfers have been
+observed on Synology; category-based placement, repeat suppression under automatic
+search, and a complete import while seeding still need live confirmation.
+Transmission live validation also remains pending.
 
 API references: [qBittorrent Web API](https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0)),
 [Transmission RPC](https://github.com/transmission/transmission/blob/main/docs/rpc-spec.md).

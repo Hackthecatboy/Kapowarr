@@ -145,8 +145,10 @@ class TorrentAdapters(unittest.TestCase):
             self.assertEqual(client.add_torrent(
                 torrent_payload(META), '/target', 'owned'), HASH)
             self.assertEqual(request.call_args.kwargs['files']['torrents'][1], META)
-            self.assertEqual(request.call_args.kwargs['data']['savepath'], '/target')
-            self.assertEqual(request.call_args.kwargs['data']['tags'], 'owned')
+            self.assertNotIn('tags', request.call_args.kwargs['data'])
+            self.assertNotIn('savepath', request.call_args.kwargs['data'])
+            self.assertEqual(request.call_args.kwargs['data']['category'], 'kapowarr')
+            self.assertEqual(request.call_args.kwargs['data']['autoTMM'], 'true')
         with patch.object(client, '_request', return_value=(200, {}, b'Fails.')):
             with self.assertRaises(ClientNotWorking):
                 client.add_torrent(magnet_payload(MAGNET), '/target', 'owned')
@@ -251,6 +253,41 @@ class ManagedTorrents(unittest.TestCase):
         self.client.add_torrent.assert_called_once()
         self.assertEqual(self.client.add_torrent.call_args.args[1], str(
             self.root / ('kapowarr-' + token)))
+
+    def test_category_placement_requires_tracked_hash_category_and_safe_path(self):
+        class CategoryClient:
+            uses_category_paths = True
+        self.client = Mock(spec=CategoryClient, id=1)
+        self.client.get_download = Mock(return_value=None)
+        self.client.add_torrent = Mock(return_value=HASH)
+        # Use the real adapter type so its placement capability is exercised.
+        self.download.external_client = object.__new__(qBittorrent)
+        self.download.external_client._id = 1
+        self.download.external_client.get_download = self.client.get_download
+        self.download.external_client.add_torrent = self.client.add_torrent
+        self.download.run()
+        folder = self.root / 'comics'
+        folder.mkdir()
+        comic = folder / 'Comic.cbz'
+        comic.write_bytes(b'abc')
+        info = dict(state=DS.SEEDING_STATE, size=3, speed=0, progress=100,
+                    category='kapowarr', tags=[], save_path=str(folder), storage=str(comic))
+        self.client.get_download.return_value = info
+        self.download.update_status()
+        self.assertEqual(self.download.files, [str(comic)])
+        restored = self.new_download()
+        restored.external_client = self.download.external_client
+        restored.run()
+        restored.update_status()
+        self.assertEqual(restored.files, [str(comic)])
+        self.client.add_torrent.assert_called_once()
+        for changes in ({'category': 'other'}, {'save_path': str(self.root.parent)},
+                        {'storage': str(folder)}, {'storage': str(self.root / 'outside.cbz')}):
+            self.client.get_download.return_value = dict(info, **changes)
+            with self.assertRaises(JobNeedsReview):
+                self.download.update_status()
+        self.download._external_id = None
+        self.assertFalse(self.download.owns(info))
 
     def test_existing_remote_torrent_is_not_adopted(self):
         self.client.get_download.return_value = {'state': DS.SEEDING_STATE}
