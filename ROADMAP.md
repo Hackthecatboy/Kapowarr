@@ -14,9 +14,11 @@ regression tests do not establish live integration or browser behavior.
 
 ### SABnzbd completion and repeat downloads
 
-- [ ] Diagnose the reported completed SABnzbd jobs that remain unimported using
-  their Kapowarr Activity errors; the supplied October 3 log excerpt contains
-  qBittorrent polling but no SABnzbd import error.
+- [ ] Validate bracketed release-year parsing on NAS. New Mutants 001 [2020]
+  lost its year during indexer parsing and was queued for the 2009 edition;
+  the importer correctly rejected it. Local regression tests cover the fix.
+- [ ] Review already-paused wrong-edition downloads and recover them to the
+  correct library series without redownloading or forcing incorrect bindings.
 - [ ] Validate queued-issue exclusion on NAS: RSS and automatic searches now
   reserve queued issue ranges, including import-review jobs, across release URLs.
 

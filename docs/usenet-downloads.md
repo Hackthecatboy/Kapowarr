@@ -131,3 +131,9 @@ If SABnzbd shows Completed but the comic is missing, inspect the corresponding
 Kapowarr Activity row for its import error. Keep that row and the completed
 payload while checking remote path mappings and file matching; removing the row
 makes its missing issues eligible for automatic download again.
+
+Newznab/Torznab release titles with standalone square-bracketed years (for
+example `New Mutants 001 [2020]`) retain that year for edition matching.
+Already queued wrong-edition jobs are not reassigned by this parser fix. A
+"Copied files did not match library issues" hold requires checking the chosen
+series against the downloaded comic before attempting recovery.

@@ -72,6 +72,32 @@ class ZnabIntegration(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.json)
         return IndexerClients.get_client(response.json['result']['id'])
 
+    def test_bracketed_release_year_rejects_wrong_library_edition(self):
+        from backend.implementations.matching import check_search_result_match
+        from backend.implementations.release_store import get_release
+        for protocol in (DownloadType.USENET, DownloadType.TORRENT):
+            client = self.add(protocol)
+            title = 'New Mutants 001 [2020] [Digital] [Empire]'
+            self.transport.side_effect = lambda params: CAPS if params['t'] == 'caps' else feed(
+                ITEM.replace('Example Comic 001 (2026)', title))
+            release = asyncio.run(client.search(dict(query='New Mutants', page=1))).results[0]
+            self.assertEqual(release['year'], 2020)
+            self.assertEqual(release['series'], 'New Mutants')
+            self.assertEqual(release['issue_number'], 1.0)
+            self.assertEqual(release['display_title'], title)
+            self.assertEqual(get_release(client.id, release['link'])['year'], 2020)
+            volume = SimpleNamespace(title='New Mutants', alt_title=None, year=2009,
+                                     volume_number=3, special_version=SpecialVersion.NORMAL)
+            issue = SimpleNamespace(calculated_issue_number=1.0, date='2009-05-01')
+            with patch('backend.implementations.matching.blocklist_contains', return_value=False):
+                result = check_search_result_match(release, volume, [issue], {1.0: 2009}, None)
+                self.assertFalse(result['match'])
+                self.assertEqual(result['match_issue'], "Year doesn't match")
+                volume.year = 2019
+                issue.date = '2020-01-01'
+                self.assertTrue(check_search_result_match(
+                    release, volume, [issue], {1.0: 2020}, None)['match'])
+
     def test_authenticated_settings_round_trip_for_both_protocols(self):
         options = self.request('GET', '/indexers/options').json['result']
         self.assertIn('Torznab', options['2'])

@@ -1,5 +1,7 @@
 """Bridge Znab protocol operations to v1.3.2's indexer interface."""
 
+import re
+
 from asyncio import get_running_loop
 from datetime import datetime, timezone
 from functools import partial
@@ -49,8 +51,12 @@ class ZnabIndexer(BaseIndexerClient):
                                  limit=self._page_limit)
 
     def _result(self, release: ZnabRelease) -> SearchResultData:
+        # Indexers commonly put publication years in square brackets. The
+        # filename parser discards those as release tags; preserve year-only
+        # brackets for matching while retaining the original display title.
+        title = re.sub(r'\[((?:18|19|20|21)\d{2})\]', r'(\1)', release.title)
         result = {
-            **extract_filename_data(release.title, assume_volume_number=False, fix_year=True),
+            **extract_filename_data(title, assume_volume_number=False, fix_year=True),
             'link': release.link, 'display_title': release.title, 'size': release.size,
             'indexer_id': self.id, 'indexer_title': self.title,
             'download_supported': self.supports_downloads
