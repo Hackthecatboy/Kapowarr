@@ -137,3 +137,11 @@ example `New Mutants 001 [2020]`) retain that year for edition matching.
 Already queued wrong-edition jobs are not reassigned by this parser fix. A
 "Copied files did not match library issues" hold requires checking the chosen
 series against the downloaded comic before attempting recovery.
+
+Before matching a completed download, Kapowarr compares SHA-256 checksums of
+its original comic files and library copies and checks that the originals did
+not change during copying. Verification failures hold the job and retain the
+originals. For automatic SABnzbd source cleanup, enable both **Delete Completed
+Downloads** and **Delete Imported SABnzbd Files** in download settings. This
+applies to tracked automatic imports; Pack Inbox imports have separate cleanup
+rules. Existing paused jobs are not automatically retried or deleted.

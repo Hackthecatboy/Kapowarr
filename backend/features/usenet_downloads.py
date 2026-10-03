@@ -20,6 +20,15 @@ from backend.internals.server import (QueueStatusEvent,
                                       RemovedFromQueueEvent, WebSocket)
 
 
+def _checksum(path):
+    """Hash incrementally so large archives do not occupy application memory."""
+    digest = sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.digest()
+
+
 def import_completed(download):
     source = Path(download.files[0])
     # Copy only regular comic media, preserving originals in the client.
@@ -51,7 +60,15 @@ def import_completed(download):
     for path in candidates:
         target = destination / (path.name if source.is_file() else path.relative_to(source))
         target.parent.mkdir(parents=True, exist_ok=True)
+        before = path.stat()
         copy2(path, target)
+        source_hash = _checksum(path)
+        target_hash = _checksum(target)
+        after = path.stat()
+        if (before.st_size != after.st_size or before.st_mtime_ns != after.st_mtime_ns
+                or target.stat().st_size != after.st_size or source_hash != target_hash):
+            raise JobNeedsReview(
+                'Copy verification failed or source changed. Originals were retained; inspect the library copy.')
         files.append(str(target))
     download.files = files
     scan_files(download.volume_id, filepath_filter=files, update_websocket=True)

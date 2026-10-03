@@ -416,6 +416,23 @@ class ManagedUsenet(unittest.TestCase):
         self.assertTrue(comic.exists())
         self.assertTrue(Path(self.download.files[0]).exists())
 
+    def test_corrupted_copy_is_held_before_matching_or_cleanup(self):
+        source = self.root / 'job'
+        source.mkdir()
+        comic = source / 'Example Comic 001.cbz'
+        comic.write_bytes(b'original')
+        self.download.files = [str(source)]
+        def corrupt(original, target):
+            target.write_bytes(b'corrupt!')  # Same size does not prove equality.
+        with patch('backend.features.usenet_downloads.copy2', side_effect=corrupt), \
+                patch('backend.features.usenet_downloads.scan_files') as scan:
+            with self.assertRaisesRegex(JobNeedsReview, 'verification failed'):
+                import_completed(self.download)
+        scan.assert_not_called()
+        self.client.delete_download.assert_not_called()
+        self.assertEqual(comic.read_bytes(), b'original')
+        self.assertEqual(self.download.phase, 'importing')
+
     def test_import_failure_and_existing_destination_never_delete_originals(self):
         source = self.root / 'job'
         source.mkdir()

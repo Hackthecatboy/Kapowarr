@@ -73,7 +73,7 @@
 				</tbody>
 			</table>
 			<h2>Usenet File Cleanup</h2>
-            <table class="fold-table"><tbody><tr><th><label for="delete-sab-files-input">Delete Imported SABnzbd Files</label></th><td><input type="checkbox" id="delete-sab-files-input"><p>After a successful library import, ask SABnzbd to remove that completed job and its downloaded files. Requires Delete Completed Downloads above. Off by default. Failed or held imports keep their files. Torrents, NZBGet and Pack Inbox sources are unaffected. Applies to jobs still tracked by Kapowarr, not downloads already removed from its queue.</p></td></tr></tbody></table>
+            <table class="fold-table"><tbody><tr><th><label for="delete-sab-files-input">Delete Imported SABnzbd Files</label></th><td><input type="checkbox" id="delete-sab-files-input"><p>After checksum verification and a successful library import, ask SABnzbd to remove that completed job and its downloaded files. Requires Delete Completed Downloads above. Off by default. Failed or held imports keep their files. Torrents, NZBGet and Pack Inbox sources are unaffected. Applies to jobs still tracked by Kapowarr, not downloads already removed from its queue.</p></td></tr></tbody></table>
             <h2 id="source-preferences">Import and Source Preferences</h2>
             <table class="fold-table"><tbody>
 <tr><th><label for="usenet-completion-delay-input">Usenet Completion Delay (seconds)</label></th><td><input id="usenet-completion-delay-input" type="number" min="0" max="3600" step="1"><p>Wait after SABnzbd or NZBGet reports completion before checking files for import. Default: 30 seconds. 0 disables the delay. Checks run on the normal polling interval.</p></td></tr>
