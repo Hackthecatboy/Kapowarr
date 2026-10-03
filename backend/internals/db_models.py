@@ -631,6 +631,15 @@ class PackInboxDB:
         )
 
     @staticmethod
+    def remove_missing_preview(root: str, token: str) -> None:
+        """Discard a vanished preview without erasing copy recovery records."""
+        get_db().execute(
+            "DELETE FROM pack_inbox WHERE root=? AND token=? "
+            "AND status IN ('review','matched','owned') AND destination IS NULL",
+            (root, token)
+        )
+
+    @staticmethod
     def find_source(separator: str, filepath: str) -> Union[Row, None]:
         """Find a journal entry even when the scan root has changed."""
         return get_db().execute(

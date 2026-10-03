@@ -511,10 +511,23 @@ def scan(folder: object, *, filename: Optional[str] = None) -> InboxListing:
                 str(root), relative, uuid4().hex, status, message,
                 size, mtime, volume_id, json.dumps(ids), manual
             ))
+        missing = []
+        if filename is None:
+            for row in PackInboxDB.review_rows(str(root)):
+                if row['status'] in TERMINAL:
+                    continue
+                try:
+                    (root / row['relative_path']).lstat()
+                except FileNotFoundError:
+                    missing.append(row['token'])
+                except OSError as error:
+                    failed(error)
         # File I/O and matching finish before acquiring a database write lock.
         # The inbox lock still prevents competing scans/imports in this process.
         try:
             PackInboxDB.mark_sources_unseen(str(root))
+            for token in missing:
+                PackInboxDB.remove_missing_preview(str(root), token)
             for rebase in rebases:
                 PackInboxDB.rebase_source(*rebase)
             for update in updates:

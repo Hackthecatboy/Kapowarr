@@ -316,3 +316,11 @@ Series starting later are excluded; missing date evidence remains for review.
 Reprint, partial and incomplete markers require an explicit issue selection.
 Use **Save Folder & Scan** to re-evaluate existing automatic matches after updating.
 Explicit manual selections are retained and should be checked separately.
+
+### Files deleted outside Kapowarr
+
+**Save Folder & Scan** removes saved review, matched and owned preview rows
+whose source files no longer exist and have no recorded copy destination.
+**Refresh Results** only reloads saved results. Importing, held and imported
+journal entries remain available for recovery/history even if their sources
+were deleted. A single-file torrent scan does not prune neighboring previews.

@@ -195,6 +195,27 @@ class PackInbox(unittest.TestCase):
         with self.assertRaises(InvalidKeyValue):
             pack_inbox.set_match(current['token'], 2, [2])
 
+    def test_rescan_removes_deleted_previews_but_preserves_copy_journal(self):
+        from backend.internals.db_models import PackInboxDB
+        for index in range(6):
+            self.comic(f'Unknown #{index + 1}.cbz')
+        rows = self.scan()
+        for row, status in zip(rows, ('review', 'matched', 'owned', 'held', 'importing', 'imported')):
+            PackInboxDB.set_state(status, 'fixture', row['token'])
+            (self.inbox / row['relative_path']).unlink()
+        self.db.commit()
+        self.assertEqual({row['status'] for row in self.scan()}, {'held', 'importing', 'imported'})
+        self.assertEqual(len(self.scan()), 3)
+
+    def test_single_file_scan_does_not_prune_other_missing_previews(self):
+        keep = self.comic('Alpha Comics 001 (2026).cbz')
+        deleted = self.comic('Other 001.cbz')
+        self.scan()
+        deleted.unlink()
+        pack_inbox.scan(str(self.inbox), filename=keep.name)
+        self.assertEqual(len(pack_inbox.listing()['items']), 2)
+        self.assertEqual(len(self.scan()), 1)
+
     def test_collection_prefix_and_explicit_one_shot_issue(self):
         self.db.execute("UPDATE volumes SET title='Avengers Standoff: Welcome to Pleasant Hill', year=2016, special_version='one-shot' WHERE id=1")
         self.comic('001 - Avengers Standoff - Welcome to Pleasant Hill #001 (2016).cbr')
