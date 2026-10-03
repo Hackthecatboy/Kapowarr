@@ -477,13 +477,14 @@ class Volume:
         return result
 
     def get_open_issues(self) -> List[Tuple[int, float]]:
-        """Get the issues that are not matched to a file and are monitored.
+        """Get the issues that are monitored, missing issues not reserved by a queued download.
 
         Returns:
             List[Tuple[int, float]]: The ID and calculated issue number of
                 the open issues.
         """
-        return get_db().execute(
+        cursor = get_db()
+        issues = cursor.execute(
             """
             SELECT i.id, i.calculated_issue_number
             FROM issues i
@@ -496,6 +497,28 @@ class Volume:
             """,
             (self.id,)
         ).fetchall()
+
+        # Paused/import-review jobs still reserve their issues. Release URLs
+        # can differ between indexers or RSS polls, so URL dedup is insufficient.
+        pending = cursor.execute(
+            'SELECT covered_issues FROM download_queue WHERE volume_id = ?',
+            (self.id,)
+        ).fetchall()
+        for row in pending:
+            coverage = row[0]
+            if coverage is None:
+                return []  # Unknown coverage: do not automatically grab alternatives.
+            try:
+                bounds = [float(part) for part in coverage.split(',')]
+                if len(bounds) not in (1, 2):
+                    return []
+                lower, upper = bounds[0], bounds[-1]
+                if lower > upper:
+                    return []
+            except (ValueError, TypeError, AttributeError):
+                return []
+            issues = [issue for issue in issues if not lower <= issue[1] <= upper]
+        return issues
 
     def get_all_files(self) -> List[FileData]:
         """Get the files and general files matched to the volume.

@@ -484,11 +484,8 @@ def auto_search(
 
     else:
         # Auto search issue
-        issue = volume.get_issue(issue_id)
-        issue_data = issue.get_data()
-        if issue_data.monitored and not issue.get_files():
-            # Issue is open
-            searchable_issues = [(issue_id, issue_data.calculated_issue_number)]
+        searchable_issues = [issue for issue in volume.get_open_issues()
+                             if issue[0] == issue_id]
 
     if not searchable_issues:
         # No issues to search for

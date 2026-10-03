@@ -12,6 +12,14 @@ sections have been removed; behavior and setup belong in the linked guides.
 Use the isolated Synology development deployment, not production data. Local
 regression tests do not establish live integration or browser behavior.
 
+### SABnzbd completion and repeat downloads
+
+- [ ] Diagnose the reported completed SABnzbd jobs that remain unimported using
+  their Kapowarr Activity errors; the supplied October 3 log excerpt contains
+  qBittorrent polling but no SABnzbd import error.
+- [ ] Validate queued-issue exclusion on NAS: RSS and automatic searches now
+  reserve queued issue ranges, including import-review jobs, across release URLs.
+
 ### Torrent workflow and queue recovery
 
 - [ ] Confirm release-to-issue matching and import while originals continue seeding.

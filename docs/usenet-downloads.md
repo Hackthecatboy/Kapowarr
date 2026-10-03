@@ -119,3 +119,15 @@ both options, download/import it, confirm the library comic opens and its issue
 is linked, then confirm SABnzbd removed the completed job's payload. Test with the
 option off using another issue and confirm its source remains. With a deliberately
 incorrect mapping, the held import must retain its source even when cleanup is on.
+
+### Completed downloads awaiting import
+
+RSS and automatic searches exclude issues already covered by a queued job,
+including jobs paused for import review. A different release URL does not make
+those issues eligible again. Unknown job coverage holds automatic searches for
+that volume until the queue entry is resolved or explicitly removed.
+
+If SABnzbd shows Completed but the comic is missing, inspect the corresponding
+Kapowarr Activity row for its import error. Keep that row and the completed
+payload while checking remote path mappings and file matching; removing the row
+makes its missing issues eligible for automatic download again.
